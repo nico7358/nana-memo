@@ -1,8 +1,9 @@
 {
-  "name": "nana memo",
-  "short_name": "nana memo",
+  "name": "nanamemo",
+  "short_name": "nanamemo",
   "description": "A simple and cute memo app. Quickly capture your ideas, shopping lists, and tasks. Features include auto-save, pinning notes, search, and customization.",
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f1f5f9",
   "theme_color": "#ec4899",

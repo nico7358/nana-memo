@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -21,18 +15,18 @@ type Note = {
 type ViewMode = 'list' | 'calendar';
 
 // --- Helper Functions ---
-const formatDate = (timestamp: number) => {
-  return new Date(timestamp).toLocaleDateString('ja-JP', {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+const formatDetailedDate = (timestamp: number) => {
+  return new Date(timestamp).toLocaleString('ja-JP', {
+    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 };
 
-const formatDateForCard = (timestamp: number) => {
-  const date = new Date(timestamp);
-  const day = date.getDate();
-  const month = date.toLocaleDateString('ja-JP', { month: 'short' });
-  const time = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return { day, month, time };
+const formatDay = (timestamp: number) => {
+  return new Date(timestamp).toLocaleDateString('ja-JP', { day: '2-digit' }).replace('日', '');
+};
+
+const formatTime = (timestamp: number) => {
+  return new Date(timestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 };
 
 const getPlainText = (html: string) => {
@@ -49,15 +43,42 @@ const isSameDay = (d1: Date, d2: Date) => {
 
 
 // --- Icon Components ---
+const RabbitIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <g filter="url(#neon-glow)" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none">
+        {/* Head */}
+        <path d="M83,59 C83,75.5,68.5,89,50,89 C31.5,89,17,75.5,17,59 C17,42.5,31.5,29,50,29 C68.5,29,83,42.5,83,59Z" />
+        {/* Ears */}
+        <path d="M35,35 C28,15,40,12,45,30" />
+        <path d="M65,35 C72,15,60,12,55,30" />
+        {/* Calm Eyes */}
+        <path d="M40,59 A 4,4 0 0,0 46,59" />
+        <path d="M54,59 A 4,4 0 0,0 60,59" />
+        {/* Nose */}
+        <path d="M49,67 L51,67" />
+        {/* Gentle Smile */}
+        <path d="M46,72 Q 50,75, 54,72" />
+      </g>
+    </svg>
+);
 const SunIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" /></svg>;
 const MoonIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.62-.12 2.37-.34-.23-.42-.37-.89-.37-1.41 0-1.93 1.57-3.5 3.5-3.5.52 0 .99.14 1.41.37-.22-.75-.34-1.54-.34-2.37 0-4.97-4.03-9-9-9z" /></svg>;
 const PlusIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>;
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>;
-const PinIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ className, isFilled }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">{isFilled ? <path d="M17 4v7l2 3v2h-6v5l-1 1-1-1v-5H5v-2l2-3V4h10z"/> : <path d="M17 4a2 2 0 0 0-2-2H9c-1.1 0-2 .9-2 2v7l-2 3v2h6v5l1 1 1-1v-5h6v-2l-2-3V4zm-5 7.58V4h-2v7.58l-2.01 3L6 16h12l-1.99-1.42L12 11.58z" />}</svg>;
+const DogEarPinIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ className, isFilled }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">{isFilled ? <path d="M17,3H7C5.9,3,5,3.9,5,5v14c0,1.1,0.9,2,2,2h10c1.1,0,2-0.9,2-2V9L17,3z M12,18c-1.66,0-3-1.34-3-3s1.34-3,3-3s3,1.34,3,3S13.66,18,12,18z"/> : <path d="M17,3H7C5.9,3,5,3.9,5,5v14c0,1.1,0.9,2,2,2h10c1.1,0,2-0.9,2-2V9l-6-6z M12,18c-1.66,0-3-1.34-3-3s1.34-3,3-3s3,1.34,3,3S13.66,18,12,18z M7,8V5h5l2,2H7z" />}</svg>;
 const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></svg>;
 const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>;
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>;
-const CogIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17-.59-1.69-.98l2.49 1c.23.09.49 0 .61.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z" /></svg>;
+const CogIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69-.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12-.64l2 3.46c.12.22.39.3.61.22l2.49 1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17-.59-1.69-.98l2.49 1c.23.09.49 0 .61.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z" /></svg>;
 const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>;
 const UploadIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>;
 const BoldIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z"/></svg>;
@@ -82,7 +103,7 @@ const FONT_OPTIONS = {
 
 const COLOR_OPTIONS = {
   'text-slate-800 dark:text-slate-200': 'デフォルト',
-  'text-pink-600 dark:text-pink-400': 'ピンク',
+  'text-rose-600 dark:text-rose-400': 'ローズ',
   'text-blue-600 dark:text-blue-400': 'ブルー',
   'text-green-600 dark:text-green-400': 'グリーン',
   'text-yellow-600 dark:text-yellow-400': 'イエロー',
@@ -113,11 +134,10 @@ export default function App() {
   const editorRef = useRef<HTMLDivElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  // FIX: Use ReturnType<typeof setTimeout> for timer refs to ensure portability.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
-  const saveStatusTimer = useRef<ReturnType<typeof setTimeout>>();
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const saveStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
 
   // Load notes from localStorage on initial render
@@ -142,11 +162,9 @@ export default function App() {
     try {
       localStorage.setItem('nana-memo-notes', JSON.stringify(notes));
       setSaveStatus('saved');
-      // FIX: Guard clearTimeout to prevent errors if the timer is not set.
       if (saveStatusTimer.current) {
         clearTimeout(saveStatusTimer.current);
       }
-      // FIX: Replace window.setTimeout with setTimeout to resolve TypeScript error and maintain consistency.
       saveStatusTimer.current = setTimeout(() => {
         setSaveStatus('idle');
       }, 2000);
@@ -155,7 +173,6 @@ export default function App() {
     }
 
     return () => {
-      // FIX: Guard clearTimeout to prevent errors if the timer is not set.
       if (saveStatusTimer.current) {
         clearTimeout(saveStatusTimer.current);
       }
@@ -190,22 +207,6 @@ export default function App() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  // Register Service Worker for PWA
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(registration => {
-            console.log('ServiceWorker registration successful with scope: ', registration.scope);
-          })
-          .catch(err => {
-            console.log('ServiceWorker registration failed: ', err);
-          });
-      });
-    }
-  }, []);
-
 
   const activeNote = useMemo(() => notes.find(note => note.id === activeNoteId), [notes, activeNoteId]);
   const activeNoteRef = useRef(activeNote);
@@ -271,7 +272,7 @@ export default function App() {
       console.error('Speech recognition error', event.error);
       if (event.error === 'not-allowed') {
         setToastMessage('マイクの使用が許可されていません');
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
       }
       setIsListening(false);
@@ -306,7 +307,7 @@ export default function App() {
     const recognition = recognitionRef.current;
     if (!recognition) {
         setToastMessage('音声認識はこのブラウザではサポートされていません。');
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
         return;
     }
@@ -343,7 +344,7 @@ export default function App() {
   const pinToNotification = (note: Note) => {
       if (!('Notification' in window)) {
         setToastMessage('このブラウザは通知機能をサポートしていません。');
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
         return;
       }
@@ -351,32 +352,32 @@ export default function App() {
       const plainTextContent = (getPlainText(note.content) || '内容がありません').substring(0, 100);
 
       if (Notification.permission === 'granted') {
-        new Notification('nana memo', {
+        new Notification('nanamemo', {
           body: plainTextContent,
           tag: `note-${note.id}`,
           requireInteraction: true,
-          icon: '/vite.svg'
+          icon: `${window.location.origin}/vite.svg`
         });
         setToastMessage('メモを通知に設定しました。');
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
       } else if (Notification.permission !== 'denied') {
         Notification.requestPermission().then(permission => {
           if (permission === 'granted') {
-            new Notification('nana memo', {
+            new Notification('nanamemo', {
               body: plainTextContent,
               tag: `note-${note.id}`,
               requireInteraction: true,
-              icon: '/vite.svg'
+              icon: `${window.location.origin}/vite.svg`
             });
             setToastMessage('メモを通知に設定しました。');
-            clearTimeout(toastTimer.current);
+            if (toastTimer.current) clearTimeout(toastTimer.current);
             toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
           }
         });
       } else {
         setToastMessage('通知の許可がありません。ブラウザの設定を確認してください。');
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
       }
   };
@@ -384,7 +385,7 @@ export default function App() {
   const handleBackup = () => {
     const dataStr = JSON.stringify(notes, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const exportFileDefaultName = 'nana-memo-backup.json';
+    const exportFileDefaultName = 'nanamemo-backup.json';
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
@@ -424,7 +425,7 @@ export default function App() {
           if (parsedData.length === 0) {
             setNotes([]);
             setToastMessage('空のバックアップファイルを復元しました。');
-            clearTimeout(toastTimer.current);
+            if (toastTimer.current) clearTimeout(toastTimer.current);
             toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
             return;
           }
@@ -458,7 +459,7 @@ export default function App() {
           if (importedNotes.every(n => 'id' in n && 'content' in n)) {
             setNotes(importedNotes);
             setToastMessage('復元が完了しました。');
-            clearTimeout(toastTimer.current);
+            if (toastTimer.current) clearTimeout(toastTimer.current);
             toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
           } else {
              throw new Error('バックアップファイルの処理に失敗しました。');
@@ -466,7 +467,7 @@ export default function App() {
         }
       } catch (error) {
         setToastMessage(`復元に失敗しました。`);
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
         console.error("Failed to restore notes:", error);
       }
@@ -480,7 +481,7 @@ export default function App() {
     const textToShare = getPlainText(activeNote.content);
     if (!textToShare) {
       setToastMessage('共有する内容がありません。');
-      clearTimeout(toastTimer.current);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
       toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
       return;
     }
@@ -488,7 +489,7 @@ export default function App() {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'nana memo',
+          title: 'nanamemo',
           text: textToShare,
         });
       } catch (error) {
@@ -498,12 +499,12 @@ export default function App() {
       try {
         await navigator.clipboard.writeText(textToShare);
         setToastMessage('クリップボードにコピーしました');
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
       } catch (error) {
         console.error('クリップボードへのコピーに失敗しました:', error);
         setToastMessage('コピーに失敗しました。');
-        clearTimeout(toastTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
       }
     }
@@ -542,7 +543,9 @@ export default function App() {
   }, [isSelectionMode]);
 
   const handlePointerUp = useCallback(() => {
-    clearTimeout(longPressTimer.current);
+    if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+    }
   }, []);
 
   const handleClick = useCallback((noteId: string) => {
@@ -698,13 +701,26 @@ export default function App() {
     </div>
   );
 
+  const currentYear = new Date().getFullYear();
+  const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+  
+  const currentMonthNoteCount = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    return notes.filter(note => {
+      const noteDate = new Date(note.updatedAt);
+      return noteDate.getFullYear() === year && noteDate.getMonth() === month;
+    }).length;
+  }, [notes]);
+
 
   if (activeNote) {
     return (
       <>
-        <div className={`flex flex-col h-screen bg-slate-100 dark:bg-slate-900 font-sans transition-colors duration-300 ${activeNote.font}`}>
-          <header className="relative flex items-center justify-between p-2 border-b border-slate-200 dark:border-slate-700">
-            <button onClick={() => setActiveNoteId(null)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><ChevronLeftIcon className="w-6 h-6" /></button>
+        <div className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 font-sans transition-colors duration-300 ${activeNote.font}`}>
+          <header className="relative flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
+            <button onClick={() => setActiveNoteId(null)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><ChevronLeftIcon className="w-6 h-6" /></button>
             <div className={`absolute left-1/2 -translate-x-1/2 transition-opacity duration-500 pointer-events-none ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}>
                 <div className="flex items-center space-x-1 text-sm text-slate-400 dark:text-slate-500">
                     <CheckIcon className="w-4 h-4" />
@@ -712,10 +728,10 @@ export default function App() {
                 </div>
             </div>
             <div className="flex items-center space-x-2">
-              <button onClick={handleShare} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-6 h-6" /></button>
-              <button onClick={() => pinToNotification(activeNote)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Pin to notification"><BellIcon className="w-6 h-6" /></button>
-              <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-pink-500' : ''}`}><PinIcon className="w-6 h-6" isFilled={activeNote.isPinned} /></button>
-              <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-6 h-6" /></button>
+              <button onClick={handleShare} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-6 h-6" /></button>
+              <button onClick={() => pinToNotification(activeNote)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Pin to notification"><BellIcon className="w-6 h-6" /></button>
+              <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-6 h-6" isFilled={activeNote.isPinned} /></button>
+              <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-6 h-6" /></button>
             </div>
           </header>
           <main className="flex-grow p-4 md:p-6">
@@ -729,11 +745,11 @@ export default function App() {
               data-placeholder="メモを入力..."
             />
           </main>
-          <footer className="flex items-center justify-center p-2 border-t border-slate-200 dark:border-slate-700 flex-wrap gap-2">
+          <footer className="flex items-center justify-center p-2 border-t border-amber-200 dark:border-slate-700 flex-wrap gap-2">
               <select
                 value={activeNote.font}
                 onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
-                className="px-2 py-1 text-sm rounded-full bg-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-500 border-transparent"
+                className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
                 aria-label="Select font"
               >
                 {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
@@ -742,25 +758,25 @@ export default function App() {
                   </option>
                 ))}
               </select>
-            <div className="w-px h-6 bg-slate-300 dark:bg-slate-600"></div>
-            <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-slate-200 dark:bg-slate-700`} aria-label="Bold">
+            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
+            <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Bold">
               <BoldIcon className="w-6 h-6" />
             </button>
-            <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-slate-200 dark:bg-slate-700`} aria-label="Underline">
+            <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Underline">
               <UnderlineIcon className="w-6 h-6" />
             </button>
             <button 
                 onClick={handleVoiceInput} 
-                className={`p-2 rounded-full bg-slate-200 dark:bg-slate-700 transition-colors ${isListening ? 'bg-pink-500/50 animate-pulse text-white' : ''}`}
+                className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-white' : ''}`}
                 aria-label="音声入力"
             >
                 <MicrophoneIcon className="w-6 h-6" />
             </button>
-            <div className="w-px h-6 bg-slate-300 dark:bg-slate-600"></div>
+            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
             <div className="relative" ref={colorPickerRef}>
                 <button 
                   onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
-                  className="flex items-center space-x-2 px-3 py-1 text-sm rounded-full bg-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  className="flex items-center space-x-2 px-3 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
                   aria-label="Select color"
                   aria-haspopup="true"
                   aria-expanded={isColorPickerOpen}
@@ -781,7 +797,7 @@ export default function App() {
                       >
                         <div className={`w-4 h-4 rounded-full ${colorClass.split(' ')[0]}`}></div>
                         <span>{colorName}</span>
-                        {activeNote.color === colorClass && <CheckIcon className="w-4 h-4 ml-auto text-pink-500" />}
+                        {activeNote.color === colorClass && <CheckIcon className="w-4 h-4 ml-auto text-rose-500" />}
                       </button>
                     ))}
                   </div>
@@ -798,19 +814,19 @@ export default function App() {
   if (viewMode === 'calendar') {
     return (
       <>
-        <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
-          <header className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
+          <header className="flex items-center justify-between p-4 border-b border-amber-200 dark:border-slate-700">
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">Calendar</h1>
             <div className='flex items-center space-x-2'>
-                <button onClick={() => setViewMode('list')} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="List view"><ListIcon className="w-6 h-6"/></button>
-                <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle dark mode">{isDarkMode ? <SunIcon className="w-6 h-6 text-yellow-400" /> : <MoonIcon className="w-6 h-6 text-slate-600" />}</button>
+                <button onClick={() => setViewMode('list')} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="List view"><ListIcon className="w-6 h-6"/></button>
+                <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle dark mode">{isDarkMode ? <SunIcon className="w-6 h-6 text-yellow-400" /> : <MoonIcon className="w-6 h-6 text-slate-600" />}</button>
             </div>
           </header>
           <div className="p-4">
               <div className="flex items-center justify-between mb-4">
-                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700"><ChevronLeftIcon className="w-6 h-6" /></button>
+                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"><ChevronLeftIcon className="w-6 h-6" /></button>
                   <h2 className="text-lg font-semibold">{calendarDate.toLocaleString('default', { month: 'long' })} {calendarDate.getFullYear()}</h2>
-                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700"><ChevronRightIcon className="w-6 h-6" /></button>
+                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"><ChevronRightIcon className="w-6 h-6" /></button>
               </div>
               <div className="grid grid-cols-7 gap-1 text-center text-sm text-slate-500">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div key={day}>{day}</div>)}
@@ -820,7 +836,7 @@ export default function App() {
                       const isToday = isSameDay(date, new Date());
                       const isSelected = selectedDate ? isSameDay(date, selectedDate) : false;
                       return (
-                          <button key={index} onClick={() => setSelectedDate(date)} className={`relative flex items-center justify-center h-10 w-10 rounded-full transition-colors ${!isCurrentMonth ? 'text-slate-400 dark:text-slate-600' : 'hover:bg-slate-200 dark:hover:bg-slate-700'} ${isToday ? 'bg-pink-500 text-white' : ''} ${isSelected ? 'ring-2 ring-pink-500' : ''}`}>
+                          <button key={index} onClick={() => setSelectedDate(date)} className={`relative flex items-center justify-center h-10 w-10 rounded-full transition-colors ${!isCurrentMonth ? 'text-slate-400 dark:text-slate-600' : 'hover:bg-amber-100 dark:hover:bg-slate-700'} ${isToday ? 'bg-rose-500 text-white' : ''} ${isSelected ? 'ring-2 ring-rose-500' : ''}`}>
                               <span>{date.getDate()}</span>
                               {hasNotes && <div className="absolute bottom-1 h-1.5 w-1.5 bg-blue-500 rounded-full"></div>}
                           </button>
@@ -855,43 +871,46 @@ export default function App() {
 
   return (
     <>
-      <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
-        <header className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
+        <header className="flex items-center justify-between p-4 border-b border-amber-200 dark:border-slate-700">
            {isSelectionMode ? (
             <>
               <div className="flex items-center space-x-2">
-                <button onClick={exitSelectionMode} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Cancel selection">
+                <button onClick={exitSelectionMode} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Cancel selection">
                   <CloseIcon className="w-6 h-6"/>
                 </button>
                 <span className="font-bold text-lg text-slate-900 dark:text-white">{selectedNoteIds.size}件選択中</span>
               </div>
               <div className="flex items-center space-x-2">
-                 <button onClick={handleBulkPin} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Pin selected notes">
-                    <PinIcon className="w-6 h-6"/>
+                 <button onClick={handleBulkPin} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Pin selected notes">
+                    <DogEarPinIcon className="w-6 h-6"/>
                   </button>
-                <button onClick={() => setShowBulkDeleteConfirm(true)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Delete selected notes">
+                <button onClick={() => setShowBulkDeleteConfirm(true)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Delete selected notes">
                   <TrashIcon className="w-6 h-6"/>
                 </button>
               </div>
             </>
           ) : (
             <>
-              <h1 className="text-2xl font-hachi text-pink-500 dark:text-pink-400">nana memo</h1>
+              <div className="flex items-center space-x-2">
+                <RabbitIcon className="w-8 h-8 text-rose-500 dark:text-rose-400" />
+                <h1 className="text-2xl font-dela text-rose-500 dark:text-rose-400">nanamemo</h1>
+              </div>
               <div className='flex items-center space-x-2'>
                   <button 
                     onClick={() => {
                       if (showSearchBar) setSearchTerm('');
                       setShowSearchBar(!showSearchBar);
                     }}
-                    className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" 
+                    className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" 
                     aria-label="Search notes"
                   >
                     <SearchIcon className="w-6 h-6"/>
                   </button>
-                  <button onClick={() => setViewMode('calendar')} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Calendar view"><CalendarIcon className="w-6 h-6"/></button>
-                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle dark mode">{isDarkMode ? <SunIcon className="w-6 h-6 text-yellow-400" /> : <MoonIcon className="w-6 h-6 text-slate-600" />}</button>
+                  <button onClick={() => setViewMode('calendar')} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Calendar view"><CalendarIcon className="w-6 h-6"/></button>
+                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle dark mode">{isDarkMode ? <SunIcon className="w-6 h-6 text-yellow-400" /> : <MoonIcon className="w-6 h-6 text-slate-600" />}</button>
                   <div className="relative">
-                      <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" aria-label="Settings"><CogIcon className="w-6 h-6"/></button>
+                      <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Settings"><CogIcon className="w-6 h-6"/></button>
                       {showSettings && (
                           <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
                               <button onClick={handleBackup} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"><DownloadIcon className='w-4 h-4'/><span>バックアップ</span></button>
@@ -905,61 +924,71 @@ export default function App() {
           )}
         </header>
         
-        {showSearchBar && (
-          <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+        {showSearchBar ? (
+          <div className="p-4 border-b border-amber-200 dark:border-slate-700">
             <div className="relative">
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="メモを検索..."
-                className="w-full pl-10 pr-4 py-2 rounded-full bg-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-400"
+                className="w-full pl-10 pr-4 py-2 rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-400"
                 autoFocus
               />
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             </div>
           </div>
+        ) : (
+           <div className="flex justify-between items-baseline px-4 pb-2 text-slate-500 dark:text-slate-400 border-b border-amber-200 dark:border-slate-700">
+              <h2 className="text-2xl font-kiwi font-bold">{currentYear} / {currentMonth}</h2>
+              <span className="text-sm font-medium">{currentMonthNoteCount}件のメモ</span>
+           </div>
         )}
         
         <main className="flex-grow p-4 overflow-y-auto">
           {filteredNotes.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredNotes.map(note => {
-                const { day, month, time } = formatDateForCard(note.updatedAt);
                 const isSelected = selectedNoteIds.has(note.id);
                 return (
-                  <div 
-                    key={note.id} 
+                  <div
+                    key={note.id}
                     role="button"
                     tabIndex={0}
                     onClick={() => handleClick(note.id)}
                     onPointerDown={() => handlePointerDown(note.id)}
                     onPointerUp={handlePointerUp}
                     onPointerLeave={handlePointerUp}
-                     onContextMenu={(e) => {
+                    onContextMenu={(e) => {
                       e.preventDefault();
                       if (!isSelectionMode) setIsSelectionMode(true);
                       setSelectedNoteIds(prev => new Set(prev).add(note.id));
                     }}
-                    className={`relative flex w-full text-left rounded-lg shadow-lg bg-white dark:bg-slate-800 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden border-t-4 border-pink-400 dark:border-pink-600 ${note.font}`}
+                    className={`relative flex w-full text-left rounded-lg shadow-md bg-white dark:bg-slate-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden ${note.font}`}
                   >
-                    <div className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-700/50 border-r border-slate-200 dark:border-slate-700 w-16 flex-shrink-0">
-                        <span className="text-3xl font-bold text-slate-700 dark:text-slate-300 tracking-tight">{day}</span>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">{month}</span>
-                        <span className="text-sm text-slate-500 dark:text-slate-400 mt-1">{time}</span>
+                    {/* Date Section (Left) */}
+                    <div className="flex-shrink-0 flex flex-col items-center justify-center w-20 p-4 border-r border-slate-100 dark:border-slate-600">
+                        <span className="text-3xl font-bold text-rose-500 dark:text-rose-400 font-sans">{formatDay(note.updatedAt)}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatTime(note.updatedAt)}</span>
                     </div>
-                    <div className="flex flex-col flex-grow p-3 min-w-0">
-                      <p className={`whitespace-pre-wrap break-words text-sm line-clamp-5 flex-grow ${note.color}`}>
-                          {getPlainText(note.content) || '新規メモ'}
-                      </p>
-                      <div className="flex justify-end items-center mt-2 h-4">
-                          {note.isPinned && <PinIcon className="w-4 h-4 text-pink-500" isFilled />}
+
+                    {/* Content Section (Right) */}
+                    <div className="flex-grow p-4 min-w-0 flex items-center">
+                        <p className={`whitespace-pre-wrap break-words text-sm line-clamp-4 ${note.color}`}>
+                            {getPlainText(note.content) || '新規メモ'}
+                        </p>
+                    </div>
+
+                    {note.isPinned && (
+                      <div className="absolute top-0 right-0 w-8 h-8">
+                        <div className="absolute top-0 right-0 w-0 h-0 border-l-[32px] border-l-transparent border-t-[32px] border-t-rose-300 dark:border-t-rose-600"></div>
                       </div>
-                    </div>
+                    )}
+                   
                     {isSelectionMode && (
-                      <div className={`absolute inset-0 rounded-lg transition-all pointer-events-none ${isSelected ? 'ring-2 ring-pink-500 ring-inset' : ''}`}>
+                      <div className={`absolute inset-0 rounded-lg transition-all pointer-events-none ${isSelected ? 'ring-2 ring-rose-500 ring-inset' : ''}`}>
                           {isSelected && (
-                              <div className="absolute top-2 right-2 w-6 h-6 bg-pink-500 rounded-full flex items-center justify-center shadow-lg">
+                              <div className="absolute top-2 right-2 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center shadow-lg">
                                   <CheckIcon className="w-4 h-4 text-white" />
                               </div>
                           )}
@@ -970,10 +999,11 @@ export default function App() {
               })}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-slate-400 dark:text-slate-500 text-center">
-                {searchTerm ? 'メモが見つかりません。' : '「+」ボタンを押して最初のメモを作成しましょう！'}
-              </p>
+            <div className="flex flex-col items-center justify-center h-full text-center">
+                <RabbitIcon className="w-24 h-24 text-slate-300 dark:text-slate-600 mb-4"/>
+                <p className="text-slate-400 dark:text-slate-500">
+                    {searchTerm ? 'メモが見つかりません。' : 'メモメモ、書き書き！'}
+                </p>
             </div>
           )}
         </main>
@@ -981,7 +1011,7 @@ export default function App() {
         {!isSelectionMode && (
           <button
             onClick={createNote}
-            className="absolute bottom-6 right-6 w-16 h-16 rounded-full bg-pink-500 text-white shadow-lg hover:bg-pink-600 focus:outline-none focus:ring-4 focus:ring-pink-300 transition-transform transform hover:scale-105"
+            className="absolute bottom-6 right-6 w-16 h-16 rounded-full bg-rose-500 text-white shadow-lg hover:bg-rose-600 focus:outline-none focus:ring-4 focus:ring-rose-300 dark:focus:ring-rose-700 transition-transform transform hover:scale-105"
             aria-label="New Note"
           >
             <PlusIcon className="w-8 h-8 mx-auto" />

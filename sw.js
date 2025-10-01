@@ -1,23 +1,18 @@
 const CACHE_NAME = 'nana-memo-cache-v1';
-const APP_SHELL_URLS = [
-  '/',
-  '/index.html',
-  '/index.tsx',
-  '/vite.svg',
-];
+// Pre-caching has been removed to make installation more robust.
+// Assets will be cached at runtime by the fetch handler.
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Service Worker: Caching app shell');
-        return cache.addAll(APP_SHELL_URLS);
-      })
-  );
+  console.log('Service Worker: Installing...');
+  // By removing pre-caching, the installation is more resilient.
+  // self.skipWaiting() forces the waiting service worker to become the
+  // active service worker.
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
   const cacheWhitelist = [CACHE_NAME];
+  console.log('Service Worker: Activating...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -28,6 +23,11 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
+    }).then(() => {
+      console.log('Service Worker: Claiming clients...');
+      // self.clients.claim() allows an active service worker to take control of
+      // all clients within its scope that are not currently controlled.
+      return self.clients.claim();
     })
   );
 });
