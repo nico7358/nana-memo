@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -66,7 +67,7 @@ const RabbitIcon: React.FC<{ className?: string }> = ({ className }) => (
         {/* Nose */}
         <path d="M49,67 L51,67" />
         {/* Gentle Smile */}
-        <path d="M46,72 Q 50,75, 54,72" />
+        <path d="M46,72 Q 48,74 50,72 Q 52,74 54,72" />
       </g>
     </svg>
 );
