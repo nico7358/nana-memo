@@ -79,7 +79,7 @@ const DogEarPinIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ c
 const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></svg>;
 const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>;
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>;
-const CogIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52-.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17.59 1.69.98l2.49-1c.23-.09.49 0 .61.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>;
+const CogIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52-.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17.59 1.69.98l2.49-1c.23-.09.49 0-.61.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>;
 const InstallIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-5 15l-4-4h2.5V8h3v4H16l-4 4z"/></svg>;
 const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>;
 const UploadIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>;
@@ -87,11 +87,12 @@ const BoldIcon: React.FC<{ className?: string }> = ({ className }) => <svg class
 const UnderlineIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zm-7 2v2h14v-2H5z"/></svg>;
 const MicrophoneIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>;
 const BellIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>;
+const BellIconFilled: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>;
 const CalendarIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>;
 const ListIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>;
 const CheckIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>;
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>;
-const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3s3-1.34 3-3-1.34-3-3-3z"/></svg>;
+const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3s3-1.34-3-3-1.34-3-3-3z"/></svg>;
 
 const FONT_OPTIONS = {
   'font-sans': 'デフォルト',
@@ -133,6 +134,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState('');
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<File | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
@@ -142,6 +144,7 @@ export default function App() {
   const saveStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
+  const isInitialPinnedIdsMount = useRef(true);
 
   // Load notes from localStorage on initial render
   useEffect(() => {
@@ -181,6 +184,54 @@ export default function App() {
       }
     };
   }, [notes]);
+
+  // --- Notification Pinning Logic ---
+  // Load pinned notification IDs from localStorage
+  useEffect(() => {
+    try {
+      const savedPinnedIds = localStorage.getItem('nana-memo-pinned-notification-ids');
+      if (savedPinnedIds) {
+        setPinnedToNotificationIds(new Set(JSON.parse(savedPinnedIds)));
+      }
+    } catch (error) {
+      console.error("Failed to load pinned notification IDs from localStorage", error);
+    }
+  }, []);
+
+  // Save pinned notification IDs to localStorage
+  useEffect(() => {
+    if (isInitialPinnedIdsMount.current) {
+      isInitialPinnedIdsMount.current = false;
+      return; // Don't save on first render
+    }
+    try {
+      localStorage.setItem('nana-memo-pinned-notification-ids', JSON.stringify(Array.from(pinnedToNotificationIds)));
+    } catch (error) {
+      console.error("Failed to save pinned notification IDs to localStorage", error);
+    }
+  }, [pinnedToNotificationIds]);
+
+  // Sync notifications with state on app load
+  useEffect(() => {
+    const syncNotifications = async () => {
+      if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+      
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const notifications = await registration.getNotifications();
+        const activeNotificationIds = new Set(
+          notifications.map(n => n.data?.noteId).filter(Boolean)
+        );
+        setPinnedToNotificationIds(activeNotificationIds);
+      } catch (error) {
+        console.error("Failed to sync notifications on load:", error);
+      }
+    };
+    
+    const timer = setTimeout(syncNotifications, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
 
   // Handle dark mode
   useEffect(() => {
@@ -363,6 +414,7 @@ export default function App() {
     if (activeNoteId === noteIdToDelete) {
       setActiveNoteId(null);
     }
+    unpinFromNotification(noteIdToDelete); // Also unpin from notification if deleted
     setNoteIdToDelete(null);
   };
 
@@ -383,27 +435,58 @@ export default function App() {
       Notification.requestPermission().then(permission => {
           if (permission === 'granted') {
               navigator.serviceWorker.ready.then(registration => {
-                  // Fix: The 'actions' property is valid for Service Worker notifications. Casting to 'any' to bypass a TypeScript type definition issue.
                   registration.showNotification('nanamemo', {
                       body: plainTextContent,
                       tag: `note-${note.id}`,
                       requireInteraction: true,
-                      icon: '/vite.svg',
+                      icon: '/icon.png',
                       data: { noteId: note.id },
                       actions: [
                         { action: 'open_note', title: 'メモを開く' }
                       ]
                   } as any);
+                  setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
+                  setToastMessage('メモを通知に設定しました。');
+                  if (toastTimer.current) clearTimeout(toastTimer.current);
+                  toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
               });
-              setToastMessage('メモを通知に設定しました。');
-              if (toastTimer.current) clearTimeout(toastTimer.current);
-              toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
           } else {
              setToastMessage('通知の許可がありません。ブラウザの設定を確認してください。');
              if (toastTimer.current) clearTimeout(toastTimer.current);
              toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
           }
       });
+  };
+
+  const unpinFromNotification = async (noteId: string) => {
+    if (!('serviceWorker' in navigator)) return;
+
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const notifications = await registration.getNotifications({ tag: `note-${noteId}` });
+        notifications.forEach(notification => notification.close());
+        setPinnedToNotificationIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(noteId);
+            return newSet;
+        });
+        setToastMessage('通知の設定を解除しました。');
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
+    } catch (error) {
+        console.error("Failed to unpin notification:", error);
+        setToastMessage('通知の解除に失敗しました。');
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+    }
+  };
+
+  const handleToggleNotificationPin = (note: Note) => {
+    if (pinnedToNotificationIds.has(note.id)) {
+        unpinFromNotification(note.id);
+    } else {
+        pinToNotification(note);
+    }
   };
 
   const handleInstallClick = () => {
@@ -598,7 +681,9 @@ export default function App() {
   }, [isSelectionMode, toggleNoteSelection]);
 
   const confirmBulkDelete = () => {
-    setNotes(notes => notes.filter(note => !selectedNoteIds.has(note.id)));
+    const idsToDelete = Array.from(selectedNoteIds);
+    setNotes(notes => notes.filter(note => !idsToDelete.includes(note.id)));
+    idsToDelete.forEach(id => unpinFromNotification(id)); // Also unpin
     setShowBulkDeleteConfirm(false);
     exitSelectionMode();
   };
@@ -754,6 +839,7 @@ export default function App() {
 
 
   if (activeNote) {
+    const isPinnedToNotification = pinnedToNotificationIds.has(activeNote.id);
     return (
       <>
         <div className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300 ${activeNote.font}`}>
@@ -770,7 +856,9 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
               <button onClick={handleShare} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-6 h-6" /></button>
-              <button onClick={() => pinToNotification(activeNote)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Pin to notification"><BellIcon className="w-6 h-6" /></button>
+              <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-rose-500' : ''}`} aria-label="Pin to notification">
+                {isPinnedToNotification ? <BellIconFilled className="w-6 h-6" /> : <BellIcon className="w-6 h-6" />}
+              </button>
               <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-6 h-6" isFilled={activeNote.isPinned} /></button>
               <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-6 h-6" /></button>
             </div>

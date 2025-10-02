@@ -4,7 +4,7 @@ const APP_SHELL_URLS = [
   '/index.html',
   '/index.tsx',
   '/manifest.json',
-  '/vite.svg'
+  '/icon.png'
 ];
 
 self.addEventListener('install', (event) => {
