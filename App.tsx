@@ -1,5 +1,7 @@
 
 
+
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -92,7 +94,7 @@ const CalendarIcon: React.FC<{ className?: string }> = ({ className }) => <svg c
 const ListIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>;
 const CheckIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>;
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>;
-const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3s3-1.34-3-3-1.34-3-3-3z"/></svg>;
+const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" /></svg>;
 
 const FONT_OPTIONS = {
   'font-sans': 'デフォルト',
@@ -422,40 +424,31 @@ export default function App() {
     setNoteIdToDelete(null);
   };
 
-  const pinToNotification = (note: Note) => {
-      if (!('serviceWorker' in navigator) || !('Notification' in window)) {
-        setToastMessage('通知機能はこのブラウザではサポートされていません。');
+  const pinToNotification = async (note: Note) => {
+    const plainTextContent = (getPlainText(note.content) || '内容がありません').substring(0, 100);
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        // FIX: The 'actions' property is valid but may cause a type error. Casting to 'any' as a workaround.
+        await registration.showNotification('nanamemo', {
+            body: plainTextContent,
+            tag: `note-${note.id}`,
+            requireInteraction: true,
+            icon: '/icon.png',
+            data: { noteId: note.id },
+            actions: [
+              { action: 'open_note', title: 'メモを開く' }
+            ]
+        } as any);
+        setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
+        setToastMessage('メモを通知に設定しました。');
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
+    } catch (error) {
+        console.error("Failed to show notification:", error);
+        setToastMessage('通知の表示に失敗しました。');
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
-        return;
-      }
-
-      const plainTextContent = (getPlainText(note.content) || '内容がありません').substring(0, 100);
-
-      Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-              navigator.serviceWorker.ready.then(registration => {
-                  registration.showNotification('nanamemo', {
-                      body: plainTextContent,
-                      tag: `note-${note.id}`,
-                      requireInteraction: true,
-                      icon: '/icon.png',
-                      data: { noteId: note.id },
-                      actions: [
-                        { action: 'open_note', title: 'メモを開く' }
-                      ]
-                  } as any);
-                  setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
-                  setToastMessage('メモを通知に設定しました。');
-                  if (toastTimer.current) clearTimeout(toastTimer.current);
-                  toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
-              });
-          } else {
-             setToastMessage('通知の許可がありません。ブラウザの設定を確認してください。');
-             if (toastTimer.current) clearTimeout(toastTimer.current);
-             toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
-          }
-      });
+    }
   };
 
   const unpinFromNotification = async (noteId: string) => {
@@ -480,12 +473,33 @@ export default function App() {
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
     }
   };
+  
+  const handleToggleNotificationPin = async (note: Note) => {
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+        setToastMessage('通知機能はこのブラウザではサポートされていません。');
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+        return;
+    }
 
-  const handleToggleNotificationPin = (note: Note) => {
+    if (Notification.permission === 'denied') {
+        setToastMessage('通知がブロックされています。ブラウザの設定を変更してください。');
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+        return;
+    }
+
     if (pinnedToNotificationIds.has(note.id)) {
-        unpinFromNotification(note.id);
+        await unpinFromNotification(note.id);
     } else {
-        pinToNotification(note);
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            await pinToNotification(note);
+        } else {
+            setToastMessage('通知が許可されませんでした。');
+            if (toastTimer.current) clearTimeout(toastTimer.current);
+            toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+        }
     }
   };
 
@@ -843,7 +857,7 @@ export default function App() {
     return (
       <>
         <div className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300 ${activeNote.font}`}>
-          <header className="relative flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
+          <header className="relative flex-shrink-0 flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
             <div className="flex items-center space-x-2">
                 <button onClick={() => setActiveNoteId(null)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><ChevronLeftIcon className="w-6 h-6" /></button>
                 <div className={`transition-opacity duration-500 pointer-events-none ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}>
@@ -853,28 +867,10 @@ export default function App() {
                     </div>
                 </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
-              <button onClick={handleShare} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-6 h-6" /></button>
-              <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-rose-500' : ''}`} aria-label="Pin to notification">
-                {isPinnedToNotification ? <BellIconFilled className="w-6 h-6" /> : <BellIcon className="w-6 h-6" />}
-              </button>
-              <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-6 h-6" isFilled={activeNote.isPinned} /></button>
-              <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-6 h-6" /></button>
-            </div>
+            <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
           </header>
-          <main className="flex-grow p-4 md:p-6">
-            <div
-              ref={editorRef}
-              contentEditable={true}
-              suppressContentEditableWarning={true}
-              onInput={(e) => updateNote(activeNote.id, { content: e.currentTarget.innerHTML })}
-              dangerouslySetInnerHTML={{ __html: activeNote.content }}
-              className={`w-full h-full text-lg bg-transparent resize-none focus:outline-none overflow-y-auto ${activeNote.color}`}
-              data-placeholder="メモを入力..."
-            />
-          </main>
-          <footer className="flex items-center justify-center p-2 border-t border-amber-200 dark:border-slate-700 flex-wrap gap-2">
+
+          <div className="flex-shrink-0 flex items-center justify-center p-2 border-b border-amber-200 dark:border-slate-700 flex-wrap gap-2">
               <select
                 value={activeNote.font}
                 onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
@@ -887,21 +883,6 @@ export default function App() {
                   </option>
                 ))}
               </select>
-            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
-            <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Bold">
-              <BoldIcon className="w-6 h-6" />
-            </button>
-            <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Underline">
-              <UnderlineIcon className="w-6 h-6" />
-            </button>
-            <button 
-                onClick={handleVoiceInput} 
-                className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-white' : ''}`}
-                aria-label="音声入力"
-            >
-                <MicrophoneIcon className="w-6 h-6" />
-            </button>
-            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
             <div className="relative" ref={colorPickerRef}>
                 <button 
                   onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
@@ -914,7 +895,7 @@ export default function App() {
                   <span>カラー</span>
                 </button>
                 {isColorPickerOpen && (
-                  <div className="absolute bottom-full mb-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
+                  <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
                     {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
                       <button 
                         key={colorClass} 
@@ -932,7 +913,40 @@ export default function App() {
                   </div>
                 )}
             </div>
-          </footer>
+            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
+            <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Bold">
+              <BoldIcon className="w-6 h-6" />
+            </button>
+            <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Underline">
+              <UnderlineIcon className="w-6 h-6" />
+            </button>
+            <button 
+                onClick={handleVoiceInput} 
+                className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-white' : ''}`}
+                aria-label="音声入力"
+            >
+                <MicrophoneIcon className="w-6 h-6" />
+            </button>
+            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
+              <button onClick={handleShare} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-6 h-6" /></button>
+              <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-rose-500' : ''}`} aria-label="Pin to notification">
+                {isPinnedToNotification ? <BellIconFilled className="w-6 h-6" /> : <BellIcon className="w-6 h-6" />}
+              </button>
+              <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-6 h-6" isFilled={activeNote.isPinned} /></button>
+              <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-6 h-6" /></button>
+          </div>
+
+          <main className="flex-grow p-4 md:p-6 overflow-y-auto">
+            <div
+              ref={editorRef}
+              contentEditable={true}
+              suppressContentEditableWarning={true}
+              onInput={(e) => updateNote(activeNote.id, { content: e.currentTarget.innerHTML })}
+              dangerouslySetInnerHTML={{ __html: activeNote.content }}
+              className={`w-full h-full text-lg bg-transparent resize-none focus:outline-none ${activeNote.color}`}
+              data-placeholder="メモを入力..."
+            />
+          </main>
         </div>
         {ConfirmationModal}
         {Toast}

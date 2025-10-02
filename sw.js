@@ -1,8 +1,8 @@
 const CACHE_NAME = 'nana-memo-cache-v2';
+// FIX: Removed '/index.tsx' from cached URLs. It is a source file and not a browsable asset, which would cause the service worker installation to fail.
 const APP_SHELL_URLS = [
   '/',
   '/index.html',
-  '/index.tsx',
   '/manifest.json',
   '/icon.png'
 ];
