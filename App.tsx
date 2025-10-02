@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -95,6 +91,7 @@ const ListIcon: React.FC<{ className?: string }> = ({ className }) => <svg class
 const CheckIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>;
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>;
 const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" /></svg>;
+const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>;
 
 const FONT_OPTIONS = {
   'font-sans': 'デフォルト',
@@ -425,10 +422,12 @@ export default function App() {
   };
 
   const pinToNotification = async (note: Note) => {
+    // Optimistically update the UI first
+    setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
+
     const plainTextContent = (getPlainText(note.content) || '内容がありません').substring(0, 100);
     try {
         const registration = await navigator.serviceWorker.ready;
-        // FIX: The 'actions' property is valid but may cause a type error. Casting to 'any' as a workaround.
         await registration.showNotification('nanamemo', {
             body: plainTextContent,
             tag: `note-${note.id}`,
@@ -439,12 +438,17 @@ export default function App() {
               { action: 'open_note', title: 'メモを開く' }
             ]
         } as any);
-        setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
         setToastMessage('メモを通知に設定しました。');
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
     } catch (error) {
         console.error("Failed to show notification:", error);
+        // Revert the state if the API call fails
+        setPinnedToNotificationIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(note.id);
+            return newSet;
+        });
         setToastMessage('通知の表示に失敗しました。');
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
@@ -452,22 +456,26 @@ export default function App() {
   };
 
   const unpinFromNotification = async (noteId: string) => {
+    // Optimistically update UI
+    setPinnedToNotificationIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(noteId);
+        return newSet;
+    });
+
     if (!('serviceWorker' in navigator)) return;
 
     try {
         const registration = await navigator.serviceWorker.ready;
         const notifications = await registration.getNotifications({ tag: `note-${noteId}` });
         notifications.forEach(notification => notification.close());
-        setPinnedToNotificationIds(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(noteId);
-            return newSet;
-        });
         setToastMessage('通知の設定を解除しました。');
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
     } catch (error) {
         console.error("Failed to unpin notification:", error);
+        // Revert state on failure
+        setPinnedToNotificationIds(prev => new Set(prev).add(noteId));
         setToastMessage('通知の解除に失敗しました。');
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
@@ -886,13 +894,13 @@ export default function App() {
             <div className="relative" ref={colorPickerRef}>
                 <button 
                   onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
-                  className="flex items-center space-x-2 px-3 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  className="flex items-center space-x-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
                   aria-label="Select color"
                   aria-haspopup="true"
                   aria-expanded={isColorPickerOpen}
                 >
-                  <div className={`w-4 h-4 rounded-full ${activeNote.color.split(' ')[0]}`}></div>
                   <span>カラー</span>
+                  <ChevronDownIcon className="w-5 h-5" />
                 </button>
                 {isColorPickerOpen && (
                   <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
@@ -929,7 +937,7 @@ export default function App() {
             </button>
             <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
               <button onClick={handleShare} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-6 h-6" /></button>
-              <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-rose-500' : ''}`} aria-label="Pin to notification">
+              <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-yellow-500 dark:text-yellow-400' : ''}`} aria-label="Pin to notification">
                 {isPinnedToNotification ? <BellIconFilled className="w-6 h-6" /> : <BellIcon className="w-6 h-6" />}
               </button>
               <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-6 h-6" isFilled={activeNote.isPinned} /></button>
