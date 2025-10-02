@@ -222,6 +222,20 @@ export default function App() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+  
+  // Handle deep-linking from notifications
+  useEffect(() => {
+    // This effect should run only once when the app loads and notes are available
+    if (notes.length === 0) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const noteId = params.get('noteId');
+    if (noteId && notes.find(n => n.id === noteId)) {
+        setActiveNoteId(noteId);
+        // Clean up the URL to avoid re-triggering on refresh
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [notes]);
 
   const activeNote = useMemo(() => notes.find(note => note.id === activeNoteId), [notes, activeNoteId]);
   const activeNoteRef = useRef(activeNote);
@@ -369,12 +383,14 @@ export default function App() {
       Notification.requestPermission().then(permission => {
           if (permission === 'granted') {
               navigator.serviceWorker.ready.then(registration => {
-                  // FIX: Removed 'renotify: true' from NotificationOptions as it is deprecated and causes a TypeScript error.
                   registration.showNotification('nanamemo', {
                       body: plainTextContent,
                       tag: `note-${note.id}`,
                       requireInteraction: true,
-                      icon: '/vite.svg'
+                      icon: '/vite.svg',
+                      data: {
+                          noteId: note.id
+                      }
                   });
               });
               setToastMessage('メモを通知に設定しました。');
