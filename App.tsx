@@ -357,8 +357,8 @@ export default function App() {
   };
 
   const pinToNotification = (note: Note) => {
-      if (!('Notification' in window)) {
-        setToastMessage('このブラウザは通知機能をサポートしていません。');
+      if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+        setToastMessage('通知機能はこのブラウザではサポートされていません。');
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
         return;
@@ -366,35 +366,26 @@ export default function App() {
 
       const plainTextContent = (getPlainText(note.content) || '内容がありません').substring(0, 100);
 
-      if (Notification.permission === 'granted') {
-        new Notification('nanamemo', {
-          body: plainTextContent,
-          tag: `note-${note.id}`,
-          requireInteraction: true,
-          icon: `${window.location.origin}/vite.svg`
-        });
-        setToastMessage('メモを通知に設定しました。');
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
+      Notification.requestPermission().then(permission => {
           if (permission === 'granted') {
-            new Notification('nanamemo', {
-              body: plainTextContent,
-              tag: `note-${note.id}`,
-              requireInteraction: true,
-              icon: `${window.location.origin}/vite.svg`
-            });
-            setToastMessage('メモを通知に設定しました。');
-            if (toastTimer.current) clearTimeout(toastTimer.current);
-            toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
+              navigator.serviceWorker.ready.then(registration => {
+                  // FIX: Removed 'renotify: true' from NotificationOptions as it is deprecated and causes a TypeScript error.
+                  registration.showNotification('nanamemo', {
+                      body: plainTextContent,
+                      tag: `note-${note.id}`,
+                      requireInteraction: true,
+                      icon: '/vite.svg'
+                  });
+              });
+              setToastMessage('メモを通知に設定しました。');
+              if (toastTimer.current) clearTimeout(toastTimer.current);
+              toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
+          } else {
+             setToastMessage('通知の許可がありません。ブラウザの設定を確認してください。');
+             if (toastTimer.current) clearTimeout(toastTimer.current);
+             toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
           }
-        });
-      } else {
-        setToastMessage('通知の許可がありません。ブラウザの設定を確認してください。');
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
-      }
+      });
   };
 
   const handleInstallClick = () => {
@@ -749,11 +740,13 @@ export default function App() {
       <>
         <div className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300 ${activeNote.font}`}>
           <header className="relative flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
-            <button onClick={() => setActiveNoteId(null)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><ChevronLeftIcon className="w-6 h-6" /></button>
-            <div className={`absolute left-1/2 -translate-x-1/2 transition-opacity duration-500 pointer-events-none ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}>
-                <div className="flex items-center space-x-1 text-sm text-slate-400 dark:text-slate-500">
-                    <CheckIcon className="w-4 h-4" />
-                    <span>保存しました</span>
+            <div className="flex items-center space-x-2">
+                <button onClick={() => setActiveNoteId(null)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><ChevronLeftIcon className="w-6 h-6" /></button>
+                <div className={`transition-opacity duration-500 pointer-events-none ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}>
+                    <div className="flex items-center space-x-1 text-sm text-slate-400 dark:text-slate-500">
+                        <CheckIcon className="w-4 h-4" />
+                        <span>保存しました</span>
+                    </div>
                 </div>
             </div>
             <div className="flex items-center space-x-2">

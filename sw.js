@@ -1,13 +1,24 @@
-const CACHE_NAME = 'nana-memo-cache-v1';
-// Pre-caching has been removed to make installation more robust.
-// Assets will be cached at runtime by the fetch handler.
+const CACHE_NAME = 'nana-memo-cache-v2';
+const APP_SHELL_URLS = [
+  '/',
+  '/index.html',
+  '/index.tsx',
+  '/manifest.json',
+  '/vite.svg'
+];
 
 self.addEventListener('install', (event) => {
   console.log('Service Worker: Installing...');
-  // By removing pre-caching, the installation is more resilient.
-  // self.skipWaiting() forces the waiting service worker to become the
-  // active service worker.
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Service Worker: Caching app shell');
+        return cache.addAll(APP_SHELL_URLS);
+      })
+      .then(() => {
+        return self.skipWaiting();
+      })
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -25,52 +36,55 @@ self.addEventListener('activate', (event) => {
       );
     }).then(() => {
       console.log('Service Worker: Claiming clients...');
-      // self.clients.claim() allows an active service worker to take control of
-      // all clients within its scope that are not currently controlled.
       return self.clients.claim();
     })
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  // Use a cache-first strategy
+  // We only handle GET requests.
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  // For navigation requests, use a network-first strategy to get the latest app version.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // For all other requests, use a cache-first strategy.
   event.respondWith(
     caches.match(event.request)
       .then((cachedResponse) => {
-        // Cache hit - return response
         if (cachedResponse) {
           return cachedResponse;
         }
 
-        // Not in cache - fetch from network
         return fetch(event.request).then(
           (networkResponse) => {
-            // Check if we received a valid response
+            // Check for a valid response
             if (!networkResponse || networkResponse.status !== 200) {
               return networkResponse;
             }
+            
+            // Don't cache chrome extension requests
+            if(event.request.url.startsWith('chrome-extension://')) {
+                return networkResponse;
+            }
 
-            // IMPORTANT: Clone the response. A response is a stream
-            // and because we want the browser to consume the response
-            // as well as the cache consuming the response, we need
-            // to clone it so we have two streams.
             const responseToCache = networkResponse.clone();
-
             caches.open(CACHE_NAME)
               .then((cache) => {
-                // We don't cache POST requests or chrome extension requests
-                if (event.request.method !== 'POST' && !event.request.url.startsWith('chrome-extension://')) {
-                  cache.put(event.request, responseToCache);
-                }
+                cache.put(event.request, responseToCache);
               });
 
             return networkResponse;
           }
-        ).catch(error => {
-          console.error('Service Worker: Fetch failed', error);
-          // Here you could return an offline fallback page, but for this app,
-          // letting the browser handle it is fine as core functionality is cached.
-        });
+        );
       })
   );
 });
