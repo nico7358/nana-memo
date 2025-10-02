@@ -383,15 +383,17 @@ export default function App() {
       Notification.requestPermission().then(permission => {
           if (permission === 'granted') {
               navigator.serviceWorker.ready.then(registration => {
+                  // Fix: The 'actions' property is valid for Service Worker notifications. Casting to 'any' to bypass a TypeScript type definition issue.
                   registration.showNotification('nanamemo', {
                       body: plainTextContent,
                       tag: `note-${note.id}`,
                       requireInteraction: true,
                       icon: '/vite.svg',
-                      data: {
-                          noteId: note.id
-                      }
-                  });
+                      data: { noteId: note.id },
+                      actions: [
+                        { action: 'open_note', title: 'メモを開く' }
+                      ]
+                  } as any);
               });
               setToastMessage('メモを通知に設定しました。');
               if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -951,7 +953,7 @@ export default function App() {
                   <div className="relative">
                       <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Settings"><CogIcon className="w-6 h-6"/></button>
                       {showSettings && (
-                          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
+                          <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
                               {installPrompt && (
                                 <button onClick={handleInstallClick} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">
                                   <InstallIcon className='w-4 h-4'/><span>アプリをインストール</span>
@@ -960,6 +962,10 @@ export default function App() {
                               <button onClick={handleBackup} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"><DownloadIcon className='w-4 h-4'/><span>バックアップ</span></button>
                               <button onClick={() => fileInputRef.current?.click()} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"><UploadIcon className='w-4 h-4' /><span>復元</span></button>
                               <input type="file" ref={fileInputRef} onChange={handleRestore} accept=".json" className="hidden" />
+                              <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
+                              <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                                  ヒント: Safariでは「共有」→「ホーム画面に追加」でインストールできます。
+                              </div>
                           </div>
                       )}
                   </div>

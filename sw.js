@@ -93,20 +93,31 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const noteId = event.notification.data?.noteId;
-  const urlToOpen = noteId ? `/?noteId=${noteId}` : '/';
+  const urlToOpen = new URL(noteId ? `/?noteId=${noteId}` : '/', self.location.origin).href;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      if (clientList.length > 0) {
-        let client = clientList[0];
-        for (let i = 0; i < clientList.length; i++) {
-          if (clientList[i].focused) {
-            client = clientList[i];
-          }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      let matchingClient = null;
+      // Try to find a client that is already open at the correct URL
+      for (const client of windowClients) {
+        if (client.url === urlToOpen) {
+          matchingClient = client;
+          break;
         }
-        return client.focus().then(c => c.navigate(urlToOpen));
       }
-      return clients.openWindow(urlToOpen);
+
+      // If we found one, focus it
+      if (matchingClient) {
+        return matchingClient.focus();
+      } 
+      // If there are open clients, but none are on the right URL, navigate the first one
+      else if (windowClients.length > 0) {
+        return windowClients[0].navigate(urlToOpen).then(client => client.focus());
+      } 
+      // Otherwise, open a new window
+      else {
+        return clients.openWindow(urlToOpen);
+      }
     })
   );
 });
