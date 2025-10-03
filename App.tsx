@@ -145,6 +145,24 @@ export default function App() {
   const isInitialMount = useRef(true);
   const isInitialPinnedIdsMount = useRef(true);
 
+const requestNotification = async () => {
+  if ("Notification" in window && "serviceWorker" in navigator) {
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      const registration = await navigator.serviceWorker.ready;
+      registration.showNotification("nana memo", {
+        body: "メモが保存されました！",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",  // ステータスバー用小アイコン
+        tag: "memo-notify",
+        requireInteraction: true,
+        data: { url: "/" } // 通知クリックで開くURL
+      });
+    }
+  }
+};
+
+
   // Load notes from localStorage on initial render
   useEffect(() => {
     try {
