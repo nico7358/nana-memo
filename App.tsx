@@ -423,18 +423,17 @@ export default function App() {
   };
 
   const pinToNotification = async (note: Note) => {
-    // Optimistically update the UI first
-    setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
-
     const plainTextContent = (getPlainText(note.content) || '').trim();
     
     let title = 'nanamemo';
-    let body = 'メモにはまだ内容がありません。';
+    let body = 'タップしてメモを開く'; // Use a clear, non-empty default body
 
     if (plainTextContent) {
         const lines = plainTextContent.split('\n');
         title = lines[0].substring(0, 50);
-        body = lines.slice(1).join('\n').substring(0, 100);
+        if (lines.length > 1) {
+            body = lines.slice(1).join('\n').substring(0, 100);
+        }
     }
 
     try {
@@ -511,6 +510,9 @@ export default function App() {
     if (pinnedToNotificationIds.has(note.id)) {
         await unpinFromNotification(note.id);
     } else {
+        // Optimistically update the UI *before* requesting permission to provide immediate feedback.
+        setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
+        
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
             await pinToNotification(note);
@@ -518,6 +520,13 @@ export default function App() {
             setToastMessage('通知が許可されませんでした。');
             if (toastTimer.current) clearTimeout(toastTimer.current);
             toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+            
+            // Revert the optimistic update if permission is not granted.
+            setPinnedToNotificationIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(note.id);
+                return newSet;
+            });
         }
     }
   };
