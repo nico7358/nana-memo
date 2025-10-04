@@ -145,18 +145,23 @@ export default function App() {
   const isInitialMount = useRef(true);
   const isInitialPinnedIdsMount = useRef(true);
 
-const requestNotification = async () => {
+const requestNotification = async (note: { id: string; title?: string; content: string }) => {
   if ("Notification" in window && "serviceWorker" in navigator) {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       const registration = await navigator.serviceWorker.ready;
-      registration.showNotification("nana memo", {
-        body: "メモが保存されました！",
+
+      // 通知を発火
+      registration.showNotification(note.title || "nana memo", {
+        body: note.content || "メモが更新されました！",
         icon: "/icon-192.png",
-        badge: "/icon-192.png",  // ステータスバー用小アイコン
-        tag: "memo-notify",
+        badge: "/icon-192.png",
+        tag: `note-${note.id}`,
         requireInteraction: true,
-        data: { url: "/" } // 通知クリックで開くURL
+        data: {
+          url: `/note/${note.id}`, // 通知タップ時に開くURL
+          noteId: note.id
+        }
       });
     }
   }
