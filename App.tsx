@@ -1162,10 +1162,17 @@ export default function App() {
                         </p>
                     </div>
 
-                    {note.isPinned && (
-                      <div className="absolute top-0 right-0 w-8 h-8">
-                        <div className="absolute top-0 right-0 w-0 h-0 border-l-[32px] border-l-transparent border-t-[32px] border-t-rose-300 dark:border-t-rose-600"></div>
-                      </div>
+                    {!isSelectionMode && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateNote(note.id, { isPinned: !note.isPinned });
+                        }}
+                        className={`absolute top-2 right-2 p-2 rounded-full hover:bg-amber-100/50 dark:hover:bg-slate-600/50 transition-colors z-10 ${note.isPinned ? 'text-rose-500' : 'text-slate-400'}`}
+                        aria-label={note.isPinned ? 'ピンを外す' : 'メモをピン留め'}
+                      >
+                        <DogEarPinIcon className="w-5 h-5" isFilled={note.isPinned} />
+                      </button>
                     )}
                    
                     {isSelectionMode && (
