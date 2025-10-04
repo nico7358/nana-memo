@@ -311,6 +311,21 @@ const requestNotification = async (note: { id: string; title?: string; content: 
     }
   }, [notes]);
 
+// Listen for messages from the Service Worker
+useEffect(() => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data?.type === 'OPEN_NOTE') {
+        const noteId = event.data.noteId;
+        const noteToOpen = notes.find(n => n.id === noteId);
+        if (noteToOpen) {
+          setActiveNoteId(noteId);
+        }
+      }
+    });
+  }
+}, [notes]);
+
   const activeNote = useMemo(() => notes.find(note => note.id === activeNoteId), [notes, activeNoteId]);
   const activeNoteRef = useRef(activeNote);
   activeNoteRef.current = activeNote;

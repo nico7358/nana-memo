@@ -93,29 +93,26 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const noteId = event.notification.data?.noteId;
-  const urlToOpen = new URL(noteId ? `/?noteId=${noteId}` : '/', self.location.origin).href;
+  const urlToOpen = noteId
+    ? `${self.location.origin}/?noteId=${noteId}`
+    : self.location.origin;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      let matchingClient = null;
-      // Try to find a client that is already open at the correct URL
       for (const client of windowClients) {
-        if (client.url === urlToOpen) {
-          matchingClient = client;
-          break;
+        // すでに開いているタブをフォーカス
+        if ('focus' in client) {
+          client.focus();
+          // メモIDをアプリ側に送る
+          if (noteId) {
+            client.postMessage({ type: 'OPEN_NOTE', noteId });
+          }
+          return;
         }
       }
 
-      // If we found one, focus it
-      if (matchingClient) {
-        return matchingClient.focus();
-      } 
-      // If there are open clients, but none are on the right URL, navigate the first one
-      else if (windowClients.length > 0) {
-        return windowClients[0].navigate(urlToOpen).then(client => client.focus());
-      } 
-      // Otherwise, open a new window
-      else {
+      // もしアプリが開いていなければ新しいウィンドウを開く
+      if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }
     })
