@@ -145,22 +145,28 @@ export default function App() {
   const isInitialMount = useRef(true);
   const isInitialPinnedIdsMount = useRef(true);
 
-const requestNotification = async () => {
+const requestNotification = async (note: { id: string; title?: string; content: string }) => {
   if ("Notification" in window && "serviceWorker" in navigator) {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       const registration = await navigator.serviceWorker.ready;
-      registration.showNotification("nana memo", {
-        body: "メモが保存されました！",
+
+      // 通知を発火
+      registration.showNotification(note.title || "nana memo", {
+        body: note.content || "メモが更新されました！",
         icon: "/icon-192.png",
-        badge: "/icon-192.png",  // ステータスバー用小アイコン
-        tag: "memo-notify",
+        badge: "/icon-192.png",
+        tag: `note-${note.id}`,
         requireInteraction: true,
-        data: { url: "/" } // 通知クリックで開くURL
+        data: {
+          url: `/note/${note.id}`, // 通知タップ時に開くURL
+          noteId: note.id
+        }
       });
     }
   }
 };
+
 
   // Load notes from localStorage on initial render
   useEffect(() => {
@@ -892,73 +898,77 @@ const requestNotification = async () => {
                     </div>
                 </div>
             </div>
-            <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
+            <div className="flex items-center space-x-1">
+                <button onClick={handleShare} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-5 h-5" /></button>
+                <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-yellow-500 dark:text-yellow-400' : ''}`} aria-label="Pin to notification">
+                    {isPinnedToNotification ? <BellIconFilled className="w-5 h-5" /> : <BellIcon className="w-5 h-5" />}
+                </button>
+                <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
+                <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-5 h-5" /></button>
+                <div className="w-px h-6 bg-amber-200 dark:bg-slate-600" />
+                <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
+            </div>
           </header>
 
-          <div className="flex-shrink-0 flex items-center justify-center p-2 border-b border-amber-200 dark:border-slate-700 flex-wrap gap-2">
-              <select
-                value={activeNote.font}
-                onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
-                className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
-                aria-label="Select font"
-              >
-                {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
-                  <option key={fontClass} value={fontClass}>
-                    {fontName}
-                  </option>
-                ))}
-              </select>
-            <div className="relative" ref={colorPickerRef}>
-                <button 
-                  onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
-                  className="flex items-center space-x-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                  aria-label="Select color"
-                  aria-haspopup="true"
-                  aria-expanded={isColorPickerOpen}
+          <div className="flex-shrink-0 flex items-center justify-center p-2 border-b border-amber-200 dark:border-slate-700">
+            <div className="flex items-center justify-center flex-wrap gap-2">
+                <select
+                  value={activeNote.font}
+                  onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
+                  className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
+                  aria-label="Select font"
                 >
-                  <span>カラー</span>
-                  <ChevronDownIcon className="w-5 h-5" />
-                </button>
-                {isColorPickerOpen && (
-                  <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
-                    {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
-                      <button 
-                        key={colorClass} 
-                        onClick={() => {
-                          updateNote(activeNote.id, { color: colorClass });
-                          setIsColorPickerOpen(false);
-                        }} 
-                        className="w-full text-left flex items-center space-x-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                      >
-                        <div className={`w-4 h-4 rounded-full ${colorClass.split(' ')[0]}`}></div>
-                        <span>{colorName}</span>
-                        {activeNote.color === colorClass && <CheckIcon className="w-4 h-4 ml-auto text-rose-500" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-            </div>
-            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
-            <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Bold">
-              <BoldIcon className="w-6 h-6" />
-            </button>
-            <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Underline">
-              <UnderlineIcon className="w-6 h-6" />
-            </button>
-            <button 
-                onClick={handleVoiceInput} 
-                className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-white' : ''}`}
-                aria-label="音声入力"
-            >
-                <MicrophoneIcon className="w-6 h-6" />
-            </button>
-            <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
-              <button onClick={handleShare} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Share note"><ShareIcon className="w-6 h-6" /></button>
-              <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-yellow-500 dark:text-yellow-400' : ''}`} aria-label="Pin to notification">
-                {isPinnedToNotification ? <BellIconFilled className="w-6 h-6" /> : <BellIcon className="w-6 h-6" />}
+                  {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
+                    <option key={fontClass} value={fontClass}>
+                      {fontName}
+                    </option>
+                  ))}
+                </select>
+              <div className="relative" ref={colorPickerRef}>
+                  <button 
+                    onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
+                    className="flex items-center space-x-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    aria-label="Select color"
+                    aria-haspopup="true"
+                    aria-expanded={isColorPickerOpen}
+                  >
+                    <span>カラー</span>
+                    <ChevronDownIcon className="w-5 h-5" />
+                  </button>
+                  {isColorPickerOpen && (
+                    <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
+                      {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
+                        <button 
+                          key={colorClass} 
+                          onClick={() => {
+                            updateNote(activeNote.id, { color: colorClass });
+                            setIsColorPickerOpen(false);
+                          }} 
+                          className="w-full text-left flex items-center space-x-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        >
+                          <div className={`w-4 h-4 rounded-full ${colorClass.split(' ')[0]}`}></div>
+                          <span>{colorName}</span>
+                          {activeNote.color === colorClass && <CheckIcon className="w-4 h-4 ml-auto text-rose-500" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+              </div>
+              <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
+              <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Bold">
+                <BoldIcon className="w-6 h-6" />
               </button>
-              <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-6 h-6" isFilled={activeNote.isPinned} /></button>
-              <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-6 h-6" /></button>
+              <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Underline">
+                <UnderlineIcon className="w-6 h-6" />
+              </button>
+              <button 
+                  onClick={handleVoiceInput} 
+                  className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-white' : ''}`}
+                  aria-label="音声入力"
+              >
+                  <MicrophoneIcon className="w-6 h-6" />
+              </button>
+            </div>
           </div>
 
           <main className="flex-grow p-4 md:p-6 overflow-y-auto">
