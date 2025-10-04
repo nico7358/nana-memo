@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -448,11 +449,23 @@ const requestNotification = async (note: { id: string; title?: string; content: 
     // Optimistically update the UI first
     setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
 
-    const plainTextContent = (getPlainText(note.content) || '内容がありません').substring(0, 100);
+    const plainTextContent = (getPlainText(note.content) || '').trim();
+    const lines = plainTextContent.split('\n');
+    const title = (lines[0] || 'nanamemo').substring(0, 50);
+
+    let body;
+    if (plainTextContent.length === 0) {
+      body = 'メモにはまだ内容がありません。';
+    } else if (lines.length > 1) {
+      body = lines.slice(1).join('\n').substring(0, 100);
+    } else {
+      body = 'タップしてメモを開く';
+    }
+
     try {
         const registration = await navigator.serviceWorker.ready;
-        await registration.showNotification('nanamemo', {
-            body: plainTextContent,
+        await registration.showNotification(title, {
+            body,
             tag: `note-${note.id}`,
             requireInteraction: true,
             icon: '/icon.png',
@@ -632,7 +645,15 @@ const requestNotification = async (note: { id: string; title?: string; content: 
           }
         }
       } catch (error) {
-        setToastMessage(`復元に失敗しました。`);
+        // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+        // The 'error' variable from the catch block is of type 'unknown'. This has been fixed
+        // by safely checking if 'error' is an instance of Error before using its message property,
+        // providing a more informative error message to the user.
+        let errorMessage = '復元に失敗しました。';
+        if (error instanceof Error) {
+          errorMessage = `復元に失敗しました: ${error.message}`;
+        }
+        setToastMessage(errorMessage);
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
         console.error("Failed to restore notes:", error);
