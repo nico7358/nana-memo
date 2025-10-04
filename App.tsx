@@ -146,29 +146,6 @@ export default function App() {
   const isInitialMount = useRef(true);
   const isInitialPinnedIdsMount = useRef(true);
 
-const requestNotification = async (note: { id: string; title?: string; content: string }) => {
-  if ("Notification" in window && "serviceWorker" in navigator) {
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      const registration = await navigator.serviceWorker.ready;
-
-      // 通知を発火
-      registration.showNotification(note.title || "nana memo", {
-        body: note.content || "メモが更新されました！",
-        icon: "/icon-192.png",
-        badge: "/icon-192.png",
-        tag: `note-${note.id}`,
-        requireInteraction: true,
-        data: {
-          url: `/note/${note.id}`, // 通知タップ時に開くURL
-          noteId: note.id
-        }
-      });
-    }
-  }
-};
-
-
   // Load notes from localStorage on initial render
   useEffect(() => {
     try {
@@ -311,21 +288,6 @@ const requestNotification = async (note: { id: string; title?: string; content: 
     }
   }, [notes]);
 
-// Listen for messages from the Service Worker
-useEffect(() => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      if (event.data?.type === 'OPEN_NOTE') {
-        const noteId = event.data.noteId;
-        const noteToOpen = notes.find(n => n.id === noteId);
-        if (noteToOpen) {
-          setActiveNoteId(noteId);
-        }
-      }
-    });
-  }
-}, [notes]);
-
   const activeNote = useMemo(() => notes.find(note => note.id === activeNoteId), [notes, activeNoteId]);
   const activeNoteRef = useRef(activeNote);
   activeNoteRef.current = activeNote;
@@ -465,22 +427,20 @@ useEffect(() => {
     setPinnedToNotificationIds(prev => new Set(prev).add(note.id));
 
     const plainTextContent = (getPlainText(note.content) || '').trim();
-    const lines = plainTextContent.split('\n');
-    const title = (lines[0] || 'nanamemo').substring(0, 50);
+    
+    let title = 'nanamemo';
+    let body = 'メモにはまだ内容がありません。';
 
-    let body;
-    if (plainTextContent.length === 0) {
-      body = 'メモにはまだ内容がありません。';
-    } else if (lines.length > 1) {
-      body = lines.slice(1).join('\n').substring(0, 100);
-    } else {
-      body = 'タップしてメモを開く';
+    if (plainTextContent) {
+        const lines = plainTextContent.split('\n');
+        title = lines[0].substring(0, 50);
+        body = lines.slice(1).join('\n').substring(0, 100);
     }
 
     try {
         const registration = await navigator.serviceWorker.ready;
         await registration.showNotification(title, {
-            body,
+            body: body,
             tag: `note-${note.id}`,
             requireInteraction: true,
             icon: '/icon.png',
