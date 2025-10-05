@@ -439,15 +439,17 @@ export default function App() {
     try {
         const registration = await navigator.serviceWorker.ready;
         await registration.showNotification(title, {
-            body: body,
-            tag: `note-${note.id}`,
-            requireInteraction: true,
-            icon: '/icon.png',
-            data: { noteId: note.id },
-            actions: [
-              { action: 'open_note', title: 'メモを開く' }
-            ]
-        } as any);
+  body,
+  tag: `note-${note.id}`,
+  requireInteraction: true,
+  icon: '/icon-192.png',
+  badge: '/icon-192.png',
+  data: { noteId: note.id },
+  actions: [
+    { action: 'open_note', title: 'メモを開く' }
+  ]
+} as any);
+
         setToastMessage('メモを通知に設定しました。');
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
