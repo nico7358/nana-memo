@@ -1,8 +1,0 @@
-{
-  "name": "nana memo",
-  "description": "A simple and cute memo app. Quickly capture your ideas, shopping lists, and tasks. Features include auto-save, pinning notes, search, and customization.",
-  "requestFramePermissions": [
-    "microphone",
-    "notifications"
-  ]
-}
