@@ -118,3 +118,17 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SHOW_NOTE_NOTIFICATION") {
+    const { title, body, noteId } = event.data.payload;
+    self.registration.showNotification(title, {
+      body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: `note-${noteId}`,
+      requireInteraction: true,
+      data: { noteId },
+      actions: [{ action: "open_note", title: "開く" }],
+    });
+  }
+});

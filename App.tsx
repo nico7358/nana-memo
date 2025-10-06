@@ -422,50 +422,46 @@ export default function App() {
     setNoteIdToDelete(null);
   };
 
-  const pinToNotification = async (note: Note) => {
-    const plainTextContent = (getPlainText(note.content) || '').trim();
-    
-    let title = 'nanamemo';
-    let body = 'タップしてメモを開く'; // Use a clear, non-empty default body
+const pinToNotification = async (note: Note) => {
+  if (!("serviceWorker" in navigator)) return;
 
-    if (plainTextContent) {
-        const lines = plainTextContent.split('\n');
-        title = lines[0].substring(0, 50);
-        if (lines.length > 1) {
-            body = lines.slice(1).join('\n').substring(0, 100);
-        }
-    }
+  const plainTextContent = (getPlainText(note.content) || "").trim();
+  const lines = plainTextContent.split("\n");
+  const title = lines[0]?.substring(0, 50) || "nana memo";
+  const body = lines.slice(1).join("\n").substring(0, 100) || "メモを表示";
 
-    try {
-        const registration = await navigator.serviceWorker.ready;
-        await registration.showNotification(title, {
-  body,
-  tag: `note-${note.id}`,
-  requireInteraction: true,
-  icon: '/icon-192.png',
-  badge: '/icon-192.png',
-  data: { noteId: note.id },
-  actions: [
-    { action: 'open_note', title: 'メモを開く' }
-  ]
-} as any);
+  try {
+    const registration = await navigator.serviceWorker.ready;
 
-        setToastMessage('メモを通知に設定しました。');
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
-    } catch (error) {
-        console.error("Failed to show notification:", error);
-        // Revert the state if the API call fails
-        setPinnedToNotificationIds(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(note.id);
-            return newSet;
-        });
-        setToastMessage('通知の表示に失敗しました。');
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
-    }
-  };
+    // ✅ Service Worker にメッセージを送信（ここが重要）
+    registration.active?.postMessage({
+      type: "SHOW_NOTE_NOTIFICATION",
+      payload: {
+        title,
+        body,
+        noteId: note.id,
+      },
+    });
+
+    setToastMessage("通知に固定しました");
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
+  } catch (err) {
+    console.error("通知送信失敗:", err);
+
+    // エラー時にピン留め解除
+    setPinnedToNotificationIds(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(note.id);
+      return newSet;
+    });
+
+    setToastMessage("通知の表示に失敗しました");
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
+  }
+};
+
 
   const unpinFromNotification = async (noteId: string) => {
     // Optimistically update UI
