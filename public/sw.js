@@ -4,7 +4,7 @@ const APP_SHELL_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon-192.png'
+  '/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -124,7 +124,7 @@ self.addEventListener("message", (event) => {
     self.registration.showNotification(title, {
       body,
       icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      badge: "/icon-badge.png",
       tag: `note-${noteId}`,
       requireInteraction: true,
       data: { noteId },
