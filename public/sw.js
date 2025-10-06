@@ -4,7 +4,7 @@ const APP_SHELL_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon.png'
+  '/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
