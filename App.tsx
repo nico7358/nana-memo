@@ -1028,85 +1028,83 @@ const pinToNotification = async (note: Note) => {
                 </button>
                 <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><BookmarkIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
                 <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-5 h-5" /></button>
-                <div className="w-px h-6 bg-amber-200 dark:bg-slate-600" />
-                <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
+                <button onClick={() => setActiveNoteId(null)} className="ml-2 px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
             </div>
           </header>
 
-          <div className="flex-shrink-0 flex items-center justify-center p-2 border-b border-amber-200 dark:border-slate-700">
+          <div className="flex-shrink-0 flex flex-col items-center justify-center p-2 space-y-2 border-b border-amber-200 dark:border-slate-700">
+            {/* Top Row: Font and Size */}
             <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
-                {/* Font & Size Group */}
-                <div className="flex items-center gap-x-2">
-                  <select
-                    value={activeNote.font}
-                    onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
-                    className="h-8 px-2 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent appearance-none"
-                    aria-label="Select font"
-                  >
-                    {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
-                      <option key={fontClass} value={fontClass}>
-                        {fontName}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex items-center space-x-1 bg-amber-100 dark:bg-slate-700 rounded-full p-0.5">
-                    {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => {
-                      const isSelected = activeNote.fontSize === sizeClass;
-                      return (
-                        <button
-                          key={sizeClass}
-                          onClick={() => applyFontSize(sizeClass)}
-                          onMouseDown={(e) => e.preventDefault()}
-                          className={`px-2 py-0.5 text-sm rounded-full transition-colors ${isSelected ? 'bg-white dark:bg-slate-500 shadow-sm' : 'hover:bg-amber-200/50 dark:hover:bg-slate-600/50'}`}
-                          aria-label={sizeName}
-                        >
-                          {sizeName}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <select
+                value={activeNote.font}
+                onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
+                className="h-8 px-2 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent appearance-none"
+                aria-label="Select font"
+              >
+                {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
+                  <option key={fontClass} value={fontClass}>
+                    {fontName}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center space-x-1 bg-amber-100 dark:bg-slate-700 rounded-full p-0.5">
+                {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => {
+                  const isSelected = activeNote.fontSize === sizeClass;
+                  return (
+                    <button
+                      key={sizeClass}
+                      onClick={() => applyFontSize(sizeClass)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      className={`px-2 py-0.5 text-sm rounded-full transition-colors ${isSelected ? 'bg-white dark:bg-slate-500 shadow-sm' : 'hover:bg-amber-200/50 dark:hover:bg-slate-600/50'}`}
+                      aria-label={sizeName}
+                    >
+                      {sizeName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                {/* Color Group */}
-                <div className="flex items-center space-x-2">
-                  {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => {
-                    const colorMap = isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT;
-                    const hexColor = colorMap[colorClass];
-                    const isSelected = activeNote.color === colorClass;
-                    return (
-                        <button
-                            key={colorClass}
-                            aria-label={colorName}
-                            title={colorName}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applyColor(colorClass)}
-                            className={`w-6 h-6 rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 flex items-center justify-center`}
-                            style={{ backgroundColor: hexColor }}
-                        >
-                            {isSelected && <CheckIcon className="w-4 h-4 text-white mix-blend-difference" />}
-                        </button>
-                    );
-                  })}
-                </div>
-
-                {/* Style & Input Group */}
-                <div className="flex items-center space-x-1">
-                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Bold">
-                    <BoldIcon className="w-5 h-5" />
-                  </button>
-                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Underline">
-                    <UnderlineIcon className="w-5 h-5" />
-                  </button>
-                  <button 
-                      onClick={handleVoiceInput} 
-                      className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-rose-50' : ''}`}
-                      aria-label="音声入力"
-                  >
-                      <MicrophoneIcon className="w-5 h-5" />
-                  </button>
-                </div>
+            {/* Bottom Row: Styles, Mic, Colors */}
+            <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
+              <div className="flex items-center">
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Bold">
+                  <BoldIcon className="w-5 h-5" />
+                </button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Underline">
+                  <UnderlineIcon className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={handleVoiceInput} 
+                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-rose-50' : ''}`}
+                  aria-label="音声入力"
+                >
+                  <MicrophoneIcon className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => {
+                  const colorMap = isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT;
+                  const hexColor = colorMap[colorClass];
+                  const isSelected = activeNote.color === colorClass;
+                  return (
+                    <button
+                      key={colorClass}
+                      aria-label={colorName}
+                      title={colorName}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => applyColor(colorClass)}
+                      className={`w-6 h-6 rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 flex items-center justify-center`}
+                      style={{ backgroundColor: hexColor }}
+                    >
+                      {isSelected && <CheckIcon className="w-4 h-4 text-white mix-blend-difference" />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
+
 
           <main className="flex-grow p-4 md:p-6 overflow-y-auto">
             <div
