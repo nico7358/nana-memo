@@ -10,6 +10,7 @@ type Note = {
   isPinned: boolean;
   color: string;
   font: string;
+  fontSize: string;
 };
 
 type ViewMode = 'list' | 'calendar';
@@ -104,6 +105,13 @@ const FONT_OPTIONS = {
   'font-dot': 'ドット',
 };
 
+const FONT_SIZE_OPTIONS = {
+  'text-sm': '小',
+  'text-base': '中',
+  'text-lg': '大',
+  'text-xl': '特大',
+};
+
 const COLOR_OPTIONS = {
   'text-slate-800 dark:text-slate-200': 'デフォルト',
   'text-rose-600 dark:text-rose-400': 'ローズ',
@@ -112,6 +120,24 @@ const COLOR_OPTIONS = {
   'text-yellow-600 dark:text-yellow-400': 'イエロー',
   'text-purple-600 dark:text-purple-400': 'パープル',
 };
+
+// Maps for rich text editing commands
+const COLOR_HEX_MAP: { [key: string]: string } = {
+  'text-slate-800 dark:text-slate-200': '#334155', // slate-800
+  'text-rose-600 dark:text-rose-400': '#e11d48',   // rose-600
+  'text-blue-600 dark:text-blue-400': '#2563eb',   // blue-600
+  'text-green-600 dark:text-green-400': '#16a34a', // green-600
+  'text-yellow-600 dark:text-yellow-400': '#ca8a04',// yellow-500
+  'text-purple-600 dark:text-purple-400': '#9333ea',// purple-600
+};
+
+const FONT_SIZE_COMMAND_MAP: { [key: string]: string } = {
+  'text-sm': '2',   // 10pt
+  'text-base': '3', // 12pt
+  'text-lg': '4',   // 14pt
+  'text-xl': '5',   // 18pt
+};
+
 
 // --- Main App Component ---
 export default function App() {
@@ -259,6 +285,9 @@ export default function App() {
     if (activeNoteId && editorRef.current) {
         editorRef.current.focus();
     }
+    // Enable CSS styling for execCommand to use <span> instead of <font> tags.
+    // This is a deprecated feature but the simplest way for basic rich text without a library.
+    document.execCommand('styleWithCSS', false, 'true');
   }, [activeNoteId]);
 
   // Close color picker when clicking outside
@@ -314,6 +343,7 @@ export default function App() {
       isPinned: false,
       color: 'text-slate-800 dark:text-slate-200',
       font: 'font-sans',
+      fontSize: 'text-lg',
     };
     setNotes([newNote, ...notes]);
     setActiveNoteId(newNote.id);
@@ -595,7 +625,16 @@ const pinToNotification = async (note: Note) => {
           let importedNotes: Note[];
 
           if ('id' in firstNote && 'content' in firstNote && 'createdAt' in firstNote) {
-            importedNotes = parsedData;
+            importedNotes = parsedData.map((n: any) => ({
+              id: n.id,
+              content: n.content,
+              createdAt: n.createdAt,
+              updatedAt: n.updatedAt,
+              isPinned: n.isPinned || false,
+              color: n.color || 'text-slate-800 dark:text-slate-200',
+              font: n.font || 'font-sans',
+              fontSize: n.fontSize || 'text-lg',
+            }));
           } 
           else if ('note_id' in firstNote && 'text' in firstNote) {
             importedNotes = parsedData.map((note: any, index: number) => {
@@ -610,6 +649,7 @@ const pinToNotification = async (note: Note) => {
                 isPinned: Boolean(note.pinned || false),
                 color: 'text-slate-800 dark:text-slate-200',
                 font: 'font-sans',
+                fontSize: 'text-lg',
               };
             });
           } 
@@ -617,20 +657,13 @@ const pinToNotification = async (note: Note) => {
             throw new Error('サポートされていないバックアップファイル形式です。');
           }
 
-          if (importedNotes.every(n => 'id' in n && 'content' in n)) {
-            setNotes(importedNotes);
-            setToastMessage('復元が完了しました。');
-            if (toastTimer.current) clearTimeout(toastTimer.current);
-            toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
-          } else {
-             throw new Error('バックアップファイルの処理に失敗しました。');
-          }
+          setNotes(importedNotes);
+          setToastMessage('復元が完了しました。');
+          if (toastTimer.current) clearTimeout(toastTimer.current);
+          toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
+
         }
       } catch (error) {
-        // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
-        // The 'error' variable from the catch block is of type 'unknown'. This has been fixed
-        // by safely checking if 'error' is an instance of Error before using its message property,
-        // providing a more informative error message to the user.
         let errorMessage = '復元に失敗しました。';
         if (error instanceof Error) {
           errorMessage = `復元に失敗しました: ${error.message}`;
@@ -927,6 +960,32 @@ const pinToNotification = async (note: Note) => {
                     </option>
                   ))}
                 </select>
+                <select
+                  defaultValue={activeNote.fontSize || 'text-lg'}
+                  onChange={(e) => {
+                    const selection = window.getSelection();
+                    // If text is selected, apply style to selection
+                    if (selection && !selection.isCollapsed) {
+                        const sizeCommand = FONT_SIZE_COMMAND_MAP[e.target.value];
+                        if (sizeCommand) {
+                            editorRef.current?.focus();
+                            document.execCommand('fontSize', false, sizeCommand);
+                            editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                        }
+                    } else {
+                        // Otherwise, update the whole note's default style
+                        updateNote(activeNote.id, { fontSize: e.target.value });
+                    }
+                  }}
+                  className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
+                  aria-label="フォントサイズを選択"
+                >
+                  {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => (
+                    <option key={sizeClass} value={sizeClass}>
+                      {sizeName}
+                    </option>
+                  ))}
+                </select>
               <div className="relative" ref={colorPickerRef}>
                   <button 
                     onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
@@ -944,9 +1003,21 @@ const pinToNotification = async (note: Note) => {
                         <button 
                           key={colorClass} 
                           onClick={() => {
-                            updateNote(activeNote.id, { color: colorClass });
+                            const selection = window.getSelection();
+                            // If text is selected, apply style to selection
+                            if (selection && !selection.isCollapsed) {
+                                const colorHex = COLOR_HEX_MAP[colorClass];
+                                if (colorHex) {
+                                    editorRef.current?.focus();
+                                    document.execCommand('foreColor', false, colorHex);
+                                    editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                                }
+                            } else {
+                                // Otherwise, update the whole note's default style
+                                updateNote(activeNote.id, { color: colorClass });
+                            }
                             setIsColorPickerOpen(false);
-                          }} 
+                          }}
                           className="w-full text-left flex items-center space-x-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
                         >
                           <div className={`w-4 h-4 rounded-full ${colorClass.split(' ')[0]}`}></div>
@@ -981,7 +1052,7 @@ const pinToNotification = async (note: Note) => {
               suppressContentEditableWarning={true}
               onInput={(e) => updateNote(activeNote.id, { content: e.currentTarget.innerHTML })}
               dangerouslySetInnerHTML={{ __html: activeNote.content }}
-              className={`w-full h-full text-lg bg-transparent resize-none focus:outline-none ${activeNote.color}`}
+              className={`w-full h-full bg-transparent resize-none focus:outline-none ${activeNote.color} ${activeNote.fontSize || 'text-lg'}`}
               data-placeholder="メモを入力..."
             />
           </main>
@@ -1033,7 +1104,7 @@ const pinToNotification = async (note: Note) => {
                           <div className="space-y-2">
                               {notesForSelectedDay.map(note => (
                                   <button key={note.id} onClick={() => setActiveNoteId(note.id)} className={`block w-full text-left p-3 rounded-lg shadow bg-white dark:bg-slate-800 hover:shadow-md transition-shadow ${note.font}`}>
-                                      <p className={`whitespace-pre-wrap break-words text-sm line-clamp-3 ${note.color}`}>{getPlainText(note.content) || '新規メモ'}</p>
+                                      <p className={`whitespace-pre-wrap break-words line-clamp-3 ${note.color} ${note.fontSize || 'text-lg'}`}>{getPlainText(note.content) || '新規メモ'}</p>
                                   </button>
                               ))}
                           </div>
@@ -1164,7 +1235,7 @@ const pinToNotification = async (note: Note) => {
 
                     {/* Content Section (Right) */}
                     <div className="flex-grow p-4 min-w-0 flex items-center">
-                        <p className={`whitespace-pre-wrap break-words text-sm line-clamp-4 ${note.color}`}>
+                        <p className={`whitespace-pre-wrap break-words line-clamp-4 ${note.color} ${note.fontSize || 'text-lg'}`}>
                             {getPlainText(note.content) || '新規メモ'}
                         </p>
                     </div>
