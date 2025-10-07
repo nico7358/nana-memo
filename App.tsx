@@ -961,24 +961,25 @@ const pinToNotification = async (note: Note) => {
                   ))}
                 </select>
                <select
-  onMouseDown={(e) => e.preventDefault()} // ← ★ これを追加！
   defaultValue={activeNote.fontSize || 'text-lg'}
   onChange={(e) => {
     const selection = window.getSelection();
-    // If text is selected, apply style to selection
-    if (selection && !selection.isCollapsed) {
-      const sizeCommand = FONT_SIZE_COMMAND_MAP[e.target.value];
-      if (sizeCommand) {
+
+    // 一瞬後に選択を復元（フォーカスが飛んでも維持される）
+    const selectedText = selection?.toString();
+    const sizeCommand = FONT_SIZE_COMMAND_MAP[e.target.value];
+
+    setTimeout(() => {
+      if (selectedText && sizeCommand) {
         editorRef.current?.focus();
         document.execCommand('fontSize', false, sizeCommand);
         editorRef.current?.dispatchEvent(
           new Event('input', { bubbles: true, cancelable: true })
         );
+      } else {
+        updateNote(activeNote.id, { fontSize: e.target.value });
       }
-    } else {
-      // Otherwise, update the whole note's default style
-      updateNote(activeNote.id, { fontSize: e.target.value });
-    }
+    }, 50);
   }}
   className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
   aria-label="フォントサイズを選択"
@@ -992,26 +993,31 @@ const pinToNotification = async (note: Note) => {
 
 <div className="relative" ref={colorPickerRef}>
   <button
-    onMouseDown={(e) => e.preventDefault()} // ← ★ これを追加！
-    onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
+    type="button"
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsColorPickerOpen((prev) => !prev);
+    }}
     className="flex items-center space-x-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
     aria-label="Select color"
-    aria-haspopup="true"
-    aria-expanded={isColorPickerOpen}
   >
     <span>カラー</span>
     <ChevronDownIcon className="w-5 h-5" />
   </button>
 
   {isColorPickerOpen && (
-    <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
+    <div
+      className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20"
+      onMouseDown={(e) => e.preventDefault()} // 🔸選択状態を維持
+    >
       {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
         <button
           key={colorClass}
-          onMouseDown={(e) => e.preventDefault()} // ← ★ これも追加！
-          onClick={() => {
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
             const selection = window.getSelection();
-            // If text is selected, apply style to selection
             if (selection && !selection.isCollapsed) {
               const colorHex = COLOR_HEX_MAP[colorClass];
               if (colorHex) {
@@ -1022,7 +1028,6 @@ const pinToNotification = async (note: Note) => {
                 );
               }
             } else {
-              // Otherwise, update the whole note's default style
               updateNote(activeNote.id, { color: colorClass });
             }
             setIsColorPickerOpen(false);
