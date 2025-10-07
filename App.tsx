@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -71,15 +72,25 @@ const RabbitIcon: React.FC<{ className?: string }> = ({ className }) => (
       </g>
     </svg>
 );
-const SunIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" /></svg>;
-const MoonIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.62-.12 2.37-.34-.23-.42-.37-.89-.37-1.41 0-1.93 1.57-3.5 3.5-3.5.52 0 .99.14 1.41.37-.22-.75-.34-1.54-.34-2.37 0-4.97-4.03-9-9-9z" /></svg>;
+const ThemeIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" enableBackground="new 0 0 24 24" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10s10-4.48,10-10S17.52,2,12,2z M12,20c-4.41,0-8-3.59-8-8s3.59-8,8-8v16z"/>
+  </svg>
+);
 const PlusIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>;
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>;
-const DogEarPinIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ className, isFilled }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">{isFilled ? <path d="M17,3H7C5.9,3,5,3.9,5,5v14c0,1.1,0.9,2,2,2h10c1.1,0,2-0.9,2-2V9L17,3z M12,18c-1.66,0-3-1.34-3-3s1.34-3,3-3s3,1.34,3,3S13.66,18,12,18z"/> : <path d="M17,3H7C5.9,3,5,3.9,5,5v14c0,1.1,0.9,2,2,2h10c1.1,0,2-0.9,2-2V9l-6-6z M12,18c-1.66,0-3-1.34-3-3s1.34-3,3-3s3,1.34,3,3S13.66,18,12,18z M7,8V5h5l2,2H7z" />}</svg>;
+const PinIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ className, isFilled }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+    {isFilled 
+      ? <path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />
+      : <path d="M14,4V12.55L16.71,15.26C16.9,15.45 17,15.7 17,16V17H7V16C7,15.7 7.1,15.45 7.29,15.26L10,12.55V4H14M16,2H8C7.45,2 7,2.45 7,3V3.29C6.44,3.54 6,4.05 6,4.7V16H5V18H19V16H18V4.7C18,4.05 17.56,3.54 17,3.29V3C17,2.45 16.55,2 16,2Z" />
+    }
+  </svg>
+);
 const ChevronLeftIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></svg>;
 const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>;
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>;
-const CogIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52-.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17.59 1.69.98l2.49-1c.23-.09.49 0-.61.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>;
+const CogIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg>;
 const InstallIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-5 15l-4-4h2.5V8h3v4H16l-4 4z"/></svg>;
 const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>;
 const UploadIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>;
@@ -93,7 +104,6 @@ const ListIcon: React.FC<{ className?: string }> = ({ className }) => <svg class
 const CheckIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>;
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>;
 const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" /></svg>;
-const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>;
 
 const FONT_OPTIONS = {
   'font-sans': 'デフォルト',
@@ -122,13 +132,22 @@ const COLOR_OPTIONS = {
 };
 
 // Maps for rich text editing commands
-const COLOR_HEX_MAP: { [key: string]: string } = {
-  'text-slate-800 dark:text-slate-200': '#334155', // slate-800
+const COLOR_HEX_MAP_LIGHT: { [key: string]: string } = {
+  'text-slate-800 dark:text-slate-200': '#1e293b', // slate-800
   'text-rose-600 dark:text-rose-400': '#e11d48',   // rose-600
   'text-blue-600 dark:text-blue-400': '#2563eb',   // blue-600
   'text-green-600 dark:text-green-400': '#16a34a', // green-600
-  'text-yellow-600 dark:text-yellow-400': '#ca8a04',// yellow-500
+  'text-yellow-600 dark:text-yellow-400': '#ca8a04',// yellow-600
   'text-purple-600 dark:text-purple-400': '#9333ea',// purple-600
+};
+
+const COLOR_HEX_MAP_DARK: { [key: string]: string } = {
+  'text-slate-800 dark:text-slate-200': '#e2e8f0', // slate-200
+  'text-rose-600 dark:text-rose-400': '#fb7185',   // rose-400
+  'text-blue-600 dark:text-blue-400': '#60a5fa',   // blue-400
+  'text-green-600 dark:text-green-400': '#4ade80', // green-400
+  'text-yellow-600 dark:text-yellow-400': '#facc15',// yellow-400
+  'text-purple-600 dark:text-purple-400': '#c084fc',// purple-400
 };
 
 const FONT_SIZE_COMMAND_MAP: { [key: string]: string } = {
@@ -151,7 +170,6 @@ export default function App() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [noteIdToDelete, setNoteIdToDelete] = useState<string | null>(null);
-  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
@@ -163,7 +181,6 @@ export default function App() {
   const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
@@ -171,6 +188,7 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
   const isInitialPinnedIdsMount = useRef(true);
+  const selectionRangeRef = useRef<Range | null>(null);
 
   // Load notes from localStorage on initial render
   useEffect(() => {
@@ -290,19 +308,6 @@ export default function App() {
     document.execCommand('styleWithCSS', false, 'true');
   }, [activeNoteId]);
 
-  // Close color picker when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
-        setIsColorPickerOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-  
   // Handle deep-linking from notifications
   useEffect(() => {
     // This effect should run only once when the app loads and notes are available
@@ -356,6 +361,62 @@ export default function App() {
       )
     );
   }, []);
+  
+  const saveSelection = useCallback(() => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        // Only save the selection if it's inside the editor.
+        if (editorRef.current?.contains(range.commonAncestorContainer)) {
+            // cloneRange() creates a snapshot of the range.
+            // This is crucial because the original Range object is live and will change
+            // if the user clicks elsewhere, clearing the selection.
+            selectionRangeRef.current = range.cloneRange();
+        }
+    }
+  }, []);
+
+  // Use the 'selectionchange' event for a more robust way to track selection.
+  useEffect(() => {
+    // This event fires whenever the selection in the document changes.
+    document.addEventListener('selectionchange', saveSelection);
+    return () => {
+      document.removeEventListener('selectionchange', saveSelection);
+    };
+  }, [saveSelection]);
+
+  const applyColor = useCallback((colorClass: string) => {
+    // Check if there's a saved selection range and if it's not just a cursor (collapsed).
+    if (selectionRangeRef.current && !selectionRangeRef.current.collapsed) {
+        // To programmatically modify the selection, the editor must be focused.
+        editorRef.current?.focus();
+        
+        // Restore the saved selection.
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(selectionRangeRef.current);
+        }
+        
+        const map = isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT;
+        const colorHex = map[colorClass];
+
+        if (colorHex) {
+            // Apply the color to the restored selection.
+            document.execCommand('foreColor', false, colorHex);
+            // The selection might be collapsed after the command, so re-save the current state.
+            saveSelection();
+            // Manually dispatch an input event to notify React of the content change.
+            editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        }
+    } else {
+        // If no text was selected, change the default color for the entire note.
+        if(activeNoteId) {
+            updateNote(activeNoteId, { color: colorClass });
+        }
+    }
+  }, [activeNoteId, saveSelection, updateNote, isDarkMode]);
+
 
   // Setup Speech Recognition
   useEffect(() => {
@@ -939,7 +1000,7 @@ const pinToNotification = async (note: Note) => {
                 <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-yellow-500 dark:text-yellow-400' : ''}`} aria-label="Pin to notification">
                     {isPinnedToNotification ? <BellIconFilled className="w-5 h-5" /> : <BellIcon className="w-5 h-5" />}
                 </button>
-                <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><DogEarPinIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
+                <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><PinIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
                 <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-5 h-5" /></button>
                 <div className="w-px h-6 bg-amber-200 dark:bg-slate-600" />
                 <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
@@ -947,7 +1008,7 @@ const pinToNotification = async (note: Note) => {
           </header>
 
           <div className="flex-shrink-0 flex items-center justify-center p-2 border-b border-amber-200 dark:border-slate-700">
-            <div className="flex items-center justify-center flex-wrap gap-2">
+            <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
                 <select
                   value={activeNote.font}
                   onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
@@ -965,7 +1026,7 @@ const pinToNotification = async (note: Note) => {
                   onChange={(e) => {
                     const selection = window.getSelection();
                     // If text is selected, apply style to selection
-                    if (selection && !selection.isCollapsed) {
+                    if (selection && selection.toString().length > 0) {
                         const sizeCommand = FONT_SIZE_COMMAND_MAP[e.target.value];
                         if (sizeCommand) {
                             editorRef.current?.focus();
@@ -986,58 +1047,38 @@ const pinToNotification = async (note: Note) => {
                     </option>
                   ))}
                 </select>
-              <div className="relative" ref={colorPickerRef}>
-                  <button 
-                    onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
-                    className="flex items-center space-x-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    aria-label="Select color"
-                    aria-haspopup="true"
-                    aria-expanded={isColorPickerOpen}
-                  >
-                    <span>カラー</span>
-                    <ChevronDownIcon className="w-5 h-5" />
-                  </button>
-                  {isColorPickerOpen && (
-                    <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
-                      {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
-                        <button 
-                          key={colorClass} 
-                          onClick={() => {
-                            const selection = window.getSelection();
-                            // If text is selected, apply style to selection
-                            if (selection && !selection.isCollapsed) {
-                                const colorHex = COLOR_HEX_MAP[colorClass];
-                                if (colorHex) {
-                                    editorRef.current?.focus();
-                                    document.execCommand('foreColor', false, colorHex);
-                                    editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                                }
-                            } else {
-                                // Otherwise, update the whole note's default style
-                                updateNote(activeNote.id, { color: colorClass });
-                            }
-                            setIsColorPickerOpen(false);
-                          }}
-                          className="w-full text-left flex items-center space-x-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <div className={`w-4 h-4 rounded-full ${colorClass.split(' ')[0]}`}></div>
-                          <span>{colorName}</span>
-                          {activeNote.color === colorClass && <CheckIcon className="w-4 h-4 ml-auto text-rose-500" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              
+              <div className="flex items-center space-x-2">
+                {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => {
+                  const colorMap = isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT;
+                  const hexColor = colorMap[colorClass];
+                  const isSelected = activeNote.color === colorClass;
+                  return (
+                      <button
+                          key={colorClass}
+                          aria-label={colorName}
+                          title={colorName}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => applyColor(colorClass)}
+                          className={`w-6 h-6 rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 flex items-center justify-center`}
+                          style={{ backgroundColor: hexColor }}
+                      >
+                          {isSelected && <CheckIcon className="w-4 h-4 text-white mix-blend-difference" />}
+                      </button>
+                  );
+                })}
               </div>
+
               <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
-              <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Bold">
+              <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Bold">
                 <BoldIcon className="w-6 h-6" />
               </button>
-              <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Underline">
+              <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Underline">
                 <UnderlineIcon className="w-6 h-6" />
               </button>
               <button 
                   onClick={handleVoiceInput} 
-                  className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-white' : ''}`}
+                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-rose-50' : ''}`}
                   aria-label="音声入力"
               >
                   <MicrophoneIcon className="w-6 h-6" />
@@ -1071,7 +1112,9 @@ const pinToNotification = async (note: Note) => {
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">Calendar</h1>
             <div className='flex items-center space-x-2'>
                 <button onClick={() => setViewMode('list')} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="List view"><ListIcon className="w-6 h-6"/></button>
-                <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle dark mode">{isDarkMode ? <SunIcon className="w-6 h-6 text-yellow-400" /> : <MoonIcon className="w-6 h-6 text-slate-600" />}</button>
+                <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="テーマを切り替え">
+                  <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
+                </button>
             </div>
           </header>
           <div className="p-4">
@@ -1135,7 +1178,7 @@ const pinToNotification = async (note: Note) => {
               </div>
               <div className="flex items-center space-x-2">
                  <button onClick={handleBulkPin} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Pin selected notes">
-                    <DogEarPinIcon className="w-6 h-6"/>
+                    <PinIcon className="w-6 h-6"/>
                   </button>
                 <button onClick={() => setShowBulkDeleteConfirm(true)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Delete selected notes">
                   <TrashIcon className="w-6 h-6"/>
@@ -1160,7 +1203,9 @@ const pinToNotification = async (note: Note) => {
                     <SearchIcon className="w-6 h-6"/>
                   </button>
                   <button onClick={() => setViewMode('calendar')} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Calendar view"><CalendarIcon className="w-6 h-6"/></button>
-                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle dark mode">{isDarkMode ? <SunIcon className="w-6 h-6 text-yellow-400" /> : <MoonIcon className="w-6 h-6 text-slate-600" />}</button>
+                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="テーマを切り替え">
+                    <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
+                  </button>
                   <div className="relative">
                       <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Settings"><CogIcon className="w-6 h-6"/></button>
                       {showSettings && (
@@ -1241,9 +1286,9 @@ const pinToNotification = async (note: Note) => {
                     </div>
 
                     {note.isPinned && (
-                      <div className="absolute top-0 right-0 w-8 h-8">
-                        <div className="absolute top-0 right-0 w-0 h-0 border-l-[32px] border-l-transparent border-t-[32px] border-t-rose-300 dark:border-t-rose-600"></div>
-                      </div>
+                        <div className="absolute top-1.5 right-1.5 text-slate-300 dark:text-slate-500">
+                            <PinIcon className="w-5 h-5" isFilled={true} />
+                        </div>
                     )}
                    
                     {isSelectionMode && (
