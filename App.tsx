@@ -960,89 +960,85 @@ const pinToNotification = async (note: Note) => {
                     </option>
                   ))}
                 </select>
-                <select
-                  onMouseDown={(e) => e.preventDefault()} // ← 追加
-                  defaultValue={activeNote.fontSize || 'text-lg'}
-                  onChange={(e) => {
-                    const selection = window.getSelection();
-                    // If text is selected, apply style to selection
-                    if (selection && !selection.isCollapsed) {
-                        const sizeCommand = FONT_SIZE_COMMAND_MAP[e.target.value];
-                        if (sizeCommand) {
-                            editorRef.current?.focus();
-                            document.execCommand('fontSize', false, sizeCommand);
-                            editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                        }
-                    } else {
-                        // Otherwise, update the whole note's default style
-                        updateNote(activeNote.id, { fontSize: e.target.value });
-                    }
-                  }}
-                  className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
-                  aria-label="フォントサイズを選択"
-                >
-                  {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => (
-                    <option key={sizeClass} value={sizeClass}>
-                      {sizeName}
-                    </option>
-                  ))}
-                </select>
-              <div className="relative" ref={colorPickerRef}>
-                  <button 
-                    onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
-                    className="flex items-center space-x-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    aria-label="Select color"
-                    aria-haspopup="true"
-                    aria-expanded={isColorPickerOpen}
-                  >
-                    <span>カラー</span>
-                    <ChevronDownIcon className="w-5 h-5" />
-                  </button>
-                  {isColorPickerOpen && (
-                    <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
-                      {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
-                        <button 
-                          key={colorClass} 
-                          onClick={() => {
-                            const selection = window.getSelection();
-                            // If text is selected, apply style to selection
-                            if (selection && !selection.isCollapsed) {
-                                const colorHex = COLOR_HEX_MAP[colorClass];
-                                if (colorHex) {
-                                    editorRef.current?.focus();
-                                    document.execCommand('foreColor', false, colorHex);
-                                    editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                                }
-                            } else {
-                                // Otherwise, update the whole note's default style
-                                updateNote(activeNote.id, { color: colorClass });
-                            }
-                            setIsColorPickerOpen(false);
-                          }}
-                          className="w-full text-left flex items-center space-x-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <div className={`w-4 h-4 rounded-full ${colorClass.split(' ')[0]}`}></div>
-                          <span>{colorName}</span>
-                          {activeNote.color === colorClass && <CheckIcon className="w-4 h-4 ml-auto text-rose-500" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-              </div>
-              <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
-              <button onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Bold">
-                <BoldIcon className="w-6 h-6" />
-              </button>
-              <button onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700`} aria-label="Underline">
-                <UnderlineIcon className="w-6 h-6" />
-              </button>
-              <button 
-                  onClick={handleVoiceInput} 
-                  className={`p-2 rounded-full bg-amber-100 dark:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-white' : ''}`}
-                  aria-label="音声入力"
-              >
-                  <MicrophoneIcon className="w-6 h-6" />
-              </button>
+               <select
+  onMouseDown={(e) => e.preventDefault()} // ← ★ これを追加！
+  defaultValue={activeNote.fontSize || 'text-lg'}
+  onChange={(e) => {
+    const selection = window.getSelection();
+    // If text is selected, apply style to selection
+    if (selection && !selection.isCollapsed) {
+      const sizeCommand = FONT_SIZE_COMMAND_MAP[e.target.value];
+      if (sizeCommand) {
+        editorRef.current?.focus();
+        document.execCommand('fontSize', false, sizeCommand);
+        editorRef.current?.dispatchEvent(
+          new Event('input', { bubbles: true, cancelable: true })
+        );
+      }
+    } else {
+      // Otherwise, update the whole note's default style
+      updateNote(activeNote.id, { fontSize: e.target.value });
+    }
+  }}
+  className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
+  aria-label="フォントサイズを選択"
+>
+  {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => (
+    <option key={sizeClass} value={sizeClass}>
+      {sizeName}
+    </option>
+  ))}
+</select>
+
+<div className="relative" ref={colorPickerRef}>
+  <button
+    onMouseDown={(e) => e.preventDefault()} // ← ★ これを追加！
+    onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
+    className="flex items-center space-x-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+    aria-label="Select color"
+    aria-haspopup="true"
+    aria-expanded={isColorPickerOpen}
+  >
+    <span>カラー</span>
+    <ChevronDownIcon className="w-5 h-5" />
+  </button>
+
+  {isColorPickerOpen && (
+    <div className="absolute top-full mt-2 w-40 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-20">
+      {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
+        <button
+          key={colorClass}
+          onMouseDown={(e) => e.preventDefault()} // ← ★ これも追加！
+          onClick={() => {
+            const selection = window.getSelection();
+            // If text is selected, apply style to selection
+            if (selection && !selection.isCollapsed) {
+              const colorHex = COLOR_HEX_MAP[colorClass];
+              if (colorHex) {
+                editorRef.current?.focus();
+                document.execCommand('foreColor', false, colorHex);
+                editorRef.current?.dispatchEvent(
+                  new Event('input', { bubbles: true, cancelable: true })
+                );
+              }
+            } else {
+              // Otherwise, update the whole note's default style
+              updateNote(activeNote.id, { color: colorClass });
+            }
+            setIsColorPickerOpen(false);
+          }}
+          className="w-full text-left flex items-center space-x-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+        >
+          <div className={`w-4 h-4 rounded-full ${colorClass.split(' ')[0]}`}></div>
+          <span>{colorName}</span>
+          {activeNote.color === colorClass && (
+            <CheckIcon className="w-4 h-4 ml-auto text-rose-500" />
+          )}
+        </button>
+      ))}
+    </div>
+  )}
+</div>
             </div>
           </div>
 
