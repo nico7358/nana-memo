@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -79,11 +77,11 @@ const ThemeIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const PlusIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>;
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>;
-const PinIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ className, isFilled }) => (
+const BookmarkIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ className, isFilled }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
     {isFilled 
-      ? <path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />
-      : <path d="M14,4V12.55L16.71,15.26C16.9,15.45 17,15.7 17,16V17H7V16C7,15.7 7.1,15.45 7.29,15.26L10,12.55V4H14M16,2H8C7.45,2 7,2.45 7,3V3.29C6.44,3.54 6,4.05 6,4.7V16H5V18H19V16H18V4.7C18,4.05 17.56,3.54 17,3.29V3C17,2.45 16.55,2 16,2Z" />
+      ? <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+      : <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z"/>
     }
   </svg>
 );
@@ -386,8 +384,8 @@ export default function App() {
   }, [saveSelection]);
 
   const applyColor = useCallback((colorClass: string) => {
-    // Check if there's a saved selection range and if it's not just a cursor (collapsed).
-    if (selectionRangeRef.current && !selectionRangeRef.current.collapsed) {
+    // Use toString().length > 0 for a more robust check of whether text is selected.
+    if (selectionRangeRef.current && selectionRangeRef.current.toString().length > 0) {
         // To programmatically modify the selection, the editor must be focused.
         editorRef.current?.focus();
         
@@ -416,6 +414,34 @@ export default function App() {
         }
     }
   }, [activeNoteId, saveSelection, updateNote, isDarkMode]);
+
+  const applyFontSize = useCallback((sizeClass: string) => {
+    // Use toString().length > 0 for a more robust check of whether text is selected.
+    if (selectionRangeRef.current && selectionRangeRef.current.toString().length > 0) {
+        // Restore the selection first.
+        editorRef.current?.focus();
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(selectionRangeRef.current);
+        }
+        
+        const sizeCommand = FONT_SIZE_COMMAND_MAP[sizeClass];
+        if (sizeCommand) {
+            // Apply the font size command.
+            document.execCommand('fontSize', false, sizeCommand);
+            // Save the selection state again.
+            saveSelection();
+            // Trigger React's state update.
+            editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        }
+    } else {
+        // If no text is selected, update the default font size for the entire note.
+        if(activeNoteId) {
+            updateNote(activeNoteId, { fontSize: sizeClass });
+        }
+    }
+  }, [activeNoteId, updateNote, saveSelection]);
 
 
   // Setup Speech Recognition
@@ -1000,7 +1026,7 @@ const pinToNotification = async (note: Note) => {
                 <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-yellow-500 dark:text-yellow-400' : ''}`} aria-label="Pin to notification">
                     {isPinnedToNotification ? <BellIconFilled className="w-5 h-5" /> : <BellIcon className="w-5 h-5" />}
                 </button>
-                <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><PinIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
+                <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><BookmarkIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
                 <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-5 h-5" /></button>
                 <div className="w-px h-6 bg-amber-200 dark:bg-slate-600" />
                 <button onClick={() => setActiveNoteId(null)} className="px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
@@ -1009,80 +1035,76 @@ const pinToNotification = async (note: Note) => {
 
           <div className="flex-shrink-0 flex items-center justify-center p-2 border-b border-amber-200 dark:border-slate-700">
             <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
-                <select
-                  value={activeNote.font}
-                  onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
-                  className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
-                  aria-label="Select font"
-                >
-                  {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
-                    <option key={fontClass} value={fontClass}>
-                      {fontName}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  defaultValue={activeNote.fontSize || 'text-lg'}
-                  onChange={(e) => {
-                    const selection = window.getSelection();
-                    // If text is selected, apply style to selection
-                    if (selection && selection.toString().length > 0) {
-                        const sizeCommand = FONT_SIZE_COMMAND_MAP[e.target.value];
-                        if (sizeCommand) {
-                            editorRef.current?.focus();
-                            document.execCommand('fontSize', false, sizeCommand);
-                            editorRef.current?.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                        }
-                    } else {
-                        // Otherwise, update the whole note's default style
-                        updateNote(activeNote.id, { fontSize: e.target.value });
-                    }
-                  }}
-                  className="px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent"
-                  aria-label="フォントサイズを選択"
-                >
-                  {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => (
-                    <option key={sizeClass} value={sizeClass}>
-                      {sizeName}
-                    </option>
-                  ))}
-                </select>
-              
-              <div className="flex items-center space-x-2">
-                {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => {
-                  const colorMap = isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT;
-                  const hexColor = colorMap[colorClass];
-                  const isSelected = activeNote.color === colorClass;
-                  return (
-                      <button
-                          key={colorClass}
-                          aria-label={colorName}
-                          title={colorName}
+                {/* Font & Size Group */}
+                <div className="flex items-center gap-x-2">
+                  <select
+                    value={activeNote.font}
+                    onChange={(e) => updateNote(activeNote.id, { font: e.target.value })}
+                    className="h-8 px-2 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent appearance-none"
+                    aria-label="Select font"
+                  >
+                    {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
+                      <option key={fontClass} value={fontClass}>
+                        {fontName}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex items-center space-x-1 bg-amber-100 dark:bg-slate-700 rounded-full p-0.5">
+                    {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => {
+                      const isSelected = activeNote.fontSize === sizeClass;
+                      return (
+                        <button
+                          key={sizeClass}
+                          onClick={() => applyFontSize(sizeClass)}
                           onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => applyColor(colorClass)}
-                          className={`w-6 h-6 rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 flex items-center justify-center`}
-                          style={{ backgroundColor: hexColor }}
-                      >
-                          {isSelected && <CheckIcon className="w-4 h-4 text-white mix-blend-difference" />}
-                      </button>
-                  );
-                })}
-              </div>
+                          className={`px-2 py-0.5 text-sm rounded-full transition-colors ${isSelected ? 'bg-white dark:bg-slate-500 shadow-sm' : 'hover:bg-amber-200/50 dark:hover:bg-slate-600/50'}`}
+                          aria-label={sizeName}
+                        >
+                          {sizeName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-              <div className="w-px h-6 bg-amber-200 dark:bg-slate-600"></div>
-              <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Bold">
-                <BoldIcon className="w-6 h-6" />
-              </button>
-              <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Underline">
-                <UnderlineIcon className="w-6 h-6" />
-              </button>
-              <button 
-                  onClick={handleVoiceInput} 
-                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-rose-50' : ''}`}
-                  aria-label="音声入力"
-              >
-                  <MicrophoneIcon className="w-6 h-6" />
-              </button>
+                {/* Color Group */}
+                <div className="flex items-center space-x-2">
+                  {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => {
+                    const colorMap = isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT;
+                    const hexColor = colorMap[colorClass];
+                    const isSelected = activeNote.color === colorClass;
+                    return (
+                        <button
+                            key={colorClass}
+                            aria-label={colorName}
+                            title={colorName}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applyColor(colorClass)}
+                            className={`w-6 h-6 rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 flex items-center justify-center`}
+                            style={{ backgroundColor: hexColor }}
+                        >
+                            {isSelected && <CheckIcon className="w-4 h-4 text-white mix-blend-difference" />}
+                        </button>
+                    );
+                  })}
+                </div>
+
+                {/* Style & Input Group */}
+                <div className="flex items-center space-x-1">
+                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('bold', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Bold">
+                    <BoldIcon className="w-5 h-5" />
+                  </button>
+                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Underline">
+                    <UnderlineIcon className="w-5 h-5" />
+                  </button>
+                  <button 
+                      onClick={handleVoiceInput} 
+                      className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isListening ? 'bg-rose-500/50 animate-pulse text-rose-50' : ''}`}
+                      aria-label="音声入力"
+                  >
+                      <MicrophoneIcon className="w-5 h-5" />
+                  </button>
+                </div>
             </div>
           </div>
 
@@ -1178,7 +1200,7 @@ const pinToNotification = async (note: Note) => {
               </div>
               <div className="flex items-center space-x-2">
                  <button onClick={handleBulkPin} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Pin selected notes">
-                    <PinIcon className="w-6 h-6"/>
+                    <BookmarkIcon className="w-6 h-6" isFilled={true} />
                   </button>
                 <button onClick={() => setShowBulkDeleteConfirm(true)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Delete selected notes">
                   <TrashIcon className="w-6 h-6"/>
@@ -1286,8 +1308,8 @@ const pinToNotification = async (note: Note) => {
                     </div>
 
                     {note.isPinned && (
-                        <div className="absolute top-1.5 right-1.5 text-slate-300 dark:text-slate-500">
-                            <PinIcon className="w-5 h-5" isFilled={true} />
+                        <div className="absolute top-0 right-0 w-8 h-8">
+                           <div className="absolute top-0 right-0 w-0 h-0 border-8 border-solid border-transparent border-t-rose-400 dark:border-t-rose-500 border-r-rose-400 dark:border-r-rose-500" style={{ borderTopRightRadius: '0.5rem' }}></div>
                         </div>
                     )}
                    
