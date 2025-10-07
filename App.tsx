@@ -961,6 +961,7 @@ const pinToNotification = async (note: Note) => {
                   ))}
                 </select>
                 <select
+                  onMouseDown={(e) => e.preventDefault()} // ← 追加
                   defaultValue={activeNote.fontSize || 'text-lg'}
                   onChange={(e) => {
                     const selection = window.getSelection();
