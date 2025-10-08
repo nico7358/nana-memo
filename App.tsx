@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -102,6 +103,7 @@ const ListIcon: React.FC<{ className?: string }> = ({ className }) => <svg class
 const CheckIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>;
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>;
 const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" /></svg>;
+const StrikethroughIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z"/></svg>;
 
 const FONT_OPTIONS = {
   'font-sans': 'デフォルト',
@@ -750,11 +752,11 @@ const pinToNotification = async (note: Note) => {
           toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
 
         }
+      // FIX: The 'error' object in a catch block is of type 'unknown' and cannot be directly passed to setToastMessage. This is fixed by checking if it's an instance of Error and then constructing a proper error message string.
       } catch (error) {
-        let errorMessage = '復元に失敗しました。';
-        if (error instanceof Error) {
-          errorMessage = `復元に失敗しました: ${error.message}`;
-        }
+        const detail = error instanceof Error ? `: ${error.message}` : '';
+        const errorMessage = `復元に失敗しました${detail}`;
+
         setToastMessage(errorMessage);
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
@@ -1073,6 +1075,9 @@ const pinToNotification = async (note: Note) => {
                 </button>
                 <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('underline', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="Underline">
                   <UnderlineIcon className="w-5 h-5" />
+                </button>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => document.execCommand('strikeThrough', false, undefined)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`} aria-label="打ち消し線">
+                  <StrikethroughIcon className="w-5 h-5" />
                 </button>
                 <button 
                   onClick={handleVoiceInput} 
