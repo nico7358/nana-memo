@@ -110,8 +110,8 @@ const StrikethroughIcon: React.FC<{ className?: string }> = ({ className }) => <
 const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
   // ぴょんぴょん跳ねるうさぎの耳をイメージした、より可愛いボーダー
   const svgString = (color: string) => `
-    <svg width="40" height="20" viewBox="0 0 40 20" xmlns="http://www.w3.org/2000/svg">
-      <path d="M2,16 C-4,4 12,2 10,16 C8,24 20,24 18,16 C24,4 38,6 36,16" stroke="${color}" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <svg width="40" height="24" viewBox="0 0 40 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M-2,20 C5,-5 15,-5 20,20 C25,-5 35,-5 42,20" stroke="${color}" fill="none" stroke-width="3" stroke-linecap="round"/>
     </svg>
   `;
 
@@ -124,12 +124,12 @@ const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
 
   return (
     <div
-      className="h-5 w-full flex-shrink-0" // 高さを文字サイズに合わせて調整
+      className="h-6 w-full flex-shrink-0" // 高さを少し大きく
       style={{
         backgroundImage: isDarkMode ? svgUrlDark : svgUrlLight,
         backgroundRepeat: 'repeat-x',
-        backgroundSize: '30px 15px', // サイズを調整して密度と見た目を改善
-        backgroundPosition: 'center',
+        backgroundSize: '32px 20px', // サイズを調整して密度と見た目を改善
+        backgroundPosition: 'center bottom', // 下端に合わせる
       }}
       aria-hidden="true" // 装飾的な要素なのでスクリーンリーダーから隠す
     />
