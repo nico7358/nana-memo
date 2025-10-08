@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -104,6 +105,37 @@ const CheckIcon: React.FC<{ className?: string }> = ({ className }) => <svg clas
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>;
 const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" /></svg>;
 const StrikethroughIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z"/></svg>;
+
+// --- うさぎボーダーコンポーネント ---
+const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
+  // ぴょんぴょん跳ねるうさぎの耳をイメージした、より可愛いボーダー
+  const svgString = (color: string) => `
+    <svg width="40" height="20" viewBox="0 0 40 20" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2,16 C-4,4 12,2 10,16 C8,24 20,24 18,16 C24,4 38,6 36,16" stroke="${color}" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  // 元のボーダー色に合わせる
+  const lightColor = '#fde08a'; // amber-200
+  const darkColor = '#334155';  // slate-700
+
+  const svgUrlLight = `url("data:image/svg+xml,${encodeURIComponent(svgString(lightColor))}")`;
+  const svgUrlDark = `url("data:image/svg+xml,${encodeURIComponent(svgString(darkColor))}")`;
+
+  return (
+    <div
+      className="h-5 w-full flex-shrink-0" // 高さを文字サイズに合わせて調整
+      style={{
+        backgroundImage: isDarkMode ? svgUrlDark : svgUrlLight,
+        backgroundRepeat: 'repeat-x',
+        backgroundSize: '30px 15px', // サイズを調整して密度と見た目を改善
+        backgroundPosition: 'center',
+      }}
+      aria-hidden="true" // 装飾的な要素なのでスクリーンリーダーから隠す
+    />
+  );
+};
+
 
 const FONT_OPTIONS = {
   'font-sans': 'デフォルト',
@@ -752,8 +784,9 @@ const pinToNotification = async (note: Note) => {
           toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
 
         }
-      // FIX: The 'error' object in a catch block is of type 'unknown' and cannot be directly passed to setToastMessage. This is fixed by checking if it's an instance of Error and then constructing a proper error message string.
       } catch (error) {
+        // Fix: The 'error' object in a catch block is of type 'unknown' and cannot be directly passed to setToastMessage.
+        // This is fixed by checking if it's an instance of Error and then constructing a proper error message string.
         const detail = error instanceof Error ? `: ${error.message}` : '';
         const errorMessage = `復元に失敗しました${detail}`;
 
@@ -1034,7 +1067,7 @@ const pinToNotification = async (note: Note) => {
             </div>
           </header>
 
-          <div className="flex-shrink-0 flex flex-col items-center justify-center p-2 space-y-2 border-b border-amber-200 dark:border-slate-700">
+          <div className="flex-shrink-0 flex flex-col items-center justify-center p-2 space-y-2">
             {/* Top Row: Font and Size */}
             <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
               <select
@@ -1109,7 +1142,7 @@ const pinToNotification = async (note: Note) => {
               </div>
             </div>
           </div>
-
+          <RabbitBorder isDarkMode={isDarkMode} />
 
           <main className="flex-grow p-4 md:p-6 overflow-y-auto">
             <div
