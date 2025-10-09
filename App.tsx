@@ -1,5 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { GoogleGenAI } from "@google/genai";
+
+// --- Gemini API Initialization ---
+// This assumes the API_KEY is set in the environment variables
+const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 
 // --- Type Definitions ---
 type Note = {
@@ -95,6 +100,7 @@ const CheckIcon: React.FC<{ className?: string }> = ({ className }) => <svg clas
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>;
 const ShareIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" /></svg>;
 const StrikethroughIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z"/></svg>;
+const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.55 3.55 3.95.58-2.85 2.78.67 3.93-3.52-1.85L8.25 13.34l.67-3.93-2.85-2.78 3.95-.58L12 2.5zM19 11l-2 4.5-4.5 2 4.5 2 2 4.5 2-4.5 4.5-2-4.5-2 2-4.5zM5 13l-2 4.5-4.5 2 4.5 2 2 4.5 2-4.5 4.5-2-4.5-2 2-4.5z" /></svg>;
 
 // --- うさぎボーダーコンポーネント ---
 const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
@@ -167,7 +173,7 @@ const COLOR_HEX_MAP_DARK: { [key: string]: string } = {
   'text-slate-800 dark:text-slate-200': '#e2e8f0', // slate-200
   'text-rose-600 dark:text-rose-400': '#fb7185',   // rose-400
   'text-blue-600 dark:text-blue-400': '#60a5fa',   // blue-400
-  'text-green-600 dark:text-green-400': '#4ade80', // green-600
+  'text-green-600 dark:text-green-400': '#4ade80', // green-400
   'text-yellow-600 dark:text-yellow-400': '#facc15',// yellow-400
   'text-purple-600 dark:text-purple-400': '#c084fc',// purple-400
 };
@@ -259,6 +265,9 @@ export default function App() {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<File | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<Set<string>>(new Set());
+  const [showAiBackupModal, setShowAiBackupModal] = useState(false);
+  const [aiBackupInfo, setAiBackupInfo] = useState<{ filename: string; summary: string } | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -269,6 +278,7 @@ export default function App() {
   const isInitialMount = useRef(true);
   const isInitialPinnedIdsMount = useRef(true);
   const selectionRangeRef = useRef<Range | null>(null);
+  const settingsContainerRef = useRef<HTMLDivElement>(null);
 
   // Load notes from localStorage on initial render
   useEffect(() => {
@@ -401,6 +411,23 @@ export default function App() {
         window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [notes]);
+  
+  // Handle closing settings menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingsContainerRef.current && !settingsContainerRef.current.contains(event.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+
+    if (showSettings) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSettings]);
 
   const activeNote = useMemo(() => notes.find(note => note.id === activeNoteId), [notes, activeNoteId]);
   const activeNoteRef = useRef(activeNote);
@@ -742,15 +769,15 @@ const pinToNotification = async (note: Note) => {
     });
   };
   
-  const handleBackup = () => {
+  const handleBackup = (filename: string = 'nanamemo-backup.json') => {
     const dataStr = JSON.stringify(notes, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const exportFileDefaultName = 'nanamemo-backup.json';
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.setAttribute('download', filename);
     linkElement.click();
     setShowSettings(false);
+    setShowAiBackupModal(false);
   };
   
   const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -833,8 +860,6 @@ const pinToNotification = async (note: Note) => {
 
         }
       } catch (error) {
-        // Fix: The 'error' object in a catch block is of type 'unknown' and cannot be directly passed to setToastMessage.
-        // This is fixed by checking if it's an instance of Error and then constructing a proper error message string.
         const detail = error instanceof Error ? `: ${error.message}` : '';
         const errorMessage = `復元に失敗しました${detail}`;
 
@@ -879,6 +904,49 @@ const pinToNotification = async (note: Note) => {
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 2000);
       }
+    }
+  };
+
+  const handleAiBackup = async () => {
+    if (notes.length === 0) {
+      setToastMessage('バックアップするメモがありません。');
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+      return;
+    }
+
+    setShowSettings(false);
+    setShowAiBackupModal(true);
+    setIsAiLoading(true);
+    setAiBackupInfo(null);
+
+    try {
+      const notesJson = JSON.stringify(notes.map(n => ({ content: getPlainText(n.content).substring(0, 100) }))); // Send only partial content to save tokens
+
+      const today = new Date();
+      const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      
+      const filenamePrompt = `以下のJSONデータはメモアプリのデータです。この内容を10単語以内で簡潔に表現したファイル名を「${formattedDate}_内容の要約.json」の形式で提案してください。ファイル名のみを返してください。JSONデータ: ${notesJson}`;
+      const summaryPrompt = `以下のJSONデータはメモアプリのデータです。データに含まれるメモの数と、内容の簡単な要約を100文字以内で作成してください。例：「合計15件のメモ。買い物リストや日記などが含まれています。」 のように、ですます調で記述してください。JSONデータ: ${notesJson}`;
+
+      const [filenameResponse, summaryResponse] = await Promise.all([
+        ai.models.generateContent({ model: 'gemini-2.5-flash', contents: filenamePrompt }),
+        ai.models.generateContent({ model: 'gemini-2.5-flash', contents: summaryPrompt })
+      ]);
+
+      setAiBackupInfo({
+        filename: filenameResponse.text.trim().replace(/\s/g, '_'),
+        summary: summaryResponse.text.trim(),
+      });
+
+    } catch (error) {
+      console.error("AI backup generation failed:", error);
+      setToastMessage('AIによる提案の生成に失敗しました。');
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+      setShowAiBackupModal(false);
+    } finally {
+      setIsAiLoading(false);
     }
   };
 
@@ -1076,6 +1144,47 @@ const pinToNotification = async (note: Note) => {
       </div>
     </div>
   );
+
+  const AiBackupModal = showAiBackupModal && (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowAiBackupModal(false)} role="dialog" aria-modal="true" aria-labelledby="ai-backup-title">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <h2 id="ai-backup-title" className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center mb-4">
+          <SparklesIcon className="w-5 h-5 mr-2 text-yellow-500"/>
+          AIアシスタント付きバックアップ
+        </h2>
+        {isAiLoading && (
+          <div className="flex flex-col items-center justify-center h-48">
+            <div className="w-12 h-12 border-4 border-rose-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="mt-4 text-slate-500 dark:text-slate-400">AIが内容を分析中です...</p>
+          </div>
+        )}
+        {!isAiLoading && aiBackupInfo && (
+          <div>
+            <p className="text-slate-600 dark:text-slate-300 mb-4">AIが以下のファイル名と要約を提案しました。</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">ファイル名</label>
+                <p className="mt-1 p-2 bg-slate-100 dark:bg-slate-700 rounded-md text-sm break-all">{aiBackupInfo.filename}</p>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">内容の要約</label>
+                <p className="mt-1 p-2 bg-slate-100 dark:bg-slate-700 rounded-md text-sm">{aiBackupInfo.summary}</p>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3 mt-6">
+              <button onClick={() => setShowAiBackupModal(false)} className="px-4 py-2 rounded-md bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors">
+                キャンセル
+              </button>
+              <button onClick={() => handleBackup(aiBackupInfo.filename)} className="px-4 py-2 rounded-md bg-rose-500 text-white hover:bg-rose-600 transition-colors">
+                この内容で保存
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
 
   const Toast = (
     <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full text-sm shadow-lg z-50 transition-opacity duration-300 ${toastMessage ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
@@ -1320,16 +1429,19 @@ const pinToNotification = async (note: Note) => {
                   <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="テーマを切り替え">
                     <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
                   </button>
-                  <div className="relative">
+                  <div className="relative" ref={settingsContainerRef}>
                       <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Settings"><CogIcon className="w-6 h-6"/></button>
                       {showSettings && (
-                          <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
+                          <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
                               {installPrompt && (
                                 <button onClick={handleInstallClick} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">
                                   <InstallIcon className='w-4 h-4'/><span>アプリをインストール</span>
                                 </button>
                               )}
-                              <button onClick={handleBackup} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"><DownloadIcon className='w-4 h-4'/><span>バックアップ</span></button>
+                              <button onClick={handleAiBackup} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">
+                                <SparklesIcon className='w-4 h-4 text-yellow-500'/><span>AIアシスタント付きバックアップ</span>
+                              </button>
+                              <button onClick={() => handleBackup()} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"><DownloadIcon className='w-4 h-4'/><span>バックアップ (通常)</span></button>
                               <button onClick={() => fileInputRef.current?.click()} className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"><UploadIcon className='w-4 h-4' /><span>復元</span></button>
                               <input type="file" ref={fileInputRef} onChange={handleRestore} accept=".json" className="hidden" />
                               <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
@@ -1409,6 +1521,7 @@ const pinToNotification = async (note: Note) => {
       {ConfirmationModal}
       {BulkDeleteModal}
       {RestoreConfirmModal}
+      {AiBackupModal}
       {Toast}
     </>
   );
