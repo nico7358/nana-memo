@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -273,6 +274,12 @@ export default function App() {
   const settingsContainerRef = useRef<HTMLDivElement>(null);
   const dirtyNotesRef = useRef(false);
   const backupPromptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRenderedNoteId = useRef<string | null>(null);
+
+  // FIX: Moved activeNote and activeNoteRef declarations before they are used in useEffect.
+  const activeNote = useMemo(() => notes.find(note => note.id === activeNoteId), [notes, activeNoteId]);
+  const activeNoteRef = useRef(activeNote);
+  activeNoteRef.current = activeNote;
 
   // Load notes from localStorage on initial render
   useEffect(() => {
@@ -394,15 +401,23 @@ export default function App() {
     };
   }, []);
   
-  // Focus editor when a note is opened
+  // Focus editor when a note is opened and sync content
   useEffect(() => {
-    if (activeNoteId && editorRef.current) {
-        editorRef.current.focus();
+    if (activeNote && editorRef.current) {
+      // Only update innerHTML when switching to a different note
+      // to avoid losing cursor position during typing.
+      if (lastRenderedNoteId.current !== activeNote.id) {
+        editorRef.current.innerHTML = activeNote.content;
+        lastRenderedNoteId.current = activeNote.id;
+      }
+      editorRef.current.focus();
+    } else {
+      // Reset when no note is active
+      lastRenderedNoteId.current = null;
     }
     // Enable CSS styling for execCommand to use <span> instead of <font> tags.
-    // This is a deprecated feature but the simplest way for basic rich text without a library.
     document.execCommand('styleWithCSS', false, 'true');
-  }, [activeNoteId]);
+  }, [activeNote]);
 
   // Handle deep-linking from notifications
   useEffect(() => {
@@ -435,10 +450,6 @@ export default function App() {
     };
   }, [showSettings]);
 
-  const activeNote = useMemo(() => notes.find(note => note.id === activeNoteId), [notes, activeNoteId]);
-  const activeNoteRef = useRef(activeNote);
-  activeNoteRef.current = activeNote;
-  
   const noteToDelete = useMemo(() => notes.find(note => note.id === noteIdToDelete), [notes, noteIdToDelete]);
 
   const filteredNotes = useMemo(() => {
@@ -1267,7 +1278,6 @@ const pinToNotification = async (note: Note) => {
               contentEditable={true}
               suppressContentEditableWarning={true}
               onInput={(e) => updateNote(activeNote.id, { content: e.currentTarget.innerHTML })}
-              dangerouslySetInnerHTML={{ __html: activeNote.content }}
               className={`w-full h-full bg-transparent resize-none focus:outline-none ${activeNote.color} ${activeNote.fontSize || 'text-lg'}`}
               data-placeholder="メモを入力..."
             />
