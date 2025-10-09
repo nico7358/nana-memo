@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -260,7 +259,7 @@ export default function App() {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<File | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<Set<string>>(new Set());
-  const [showBackupPrompt, setShowBackupPrompt] = useState(false);
+  const [showBackupBadge, setShowBackupBadge] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -272,8 +271,6 @@ export default function App() {
   const isInitialPinnedIdsMount = useRef(true);
   const selectionRangeRef = useRef<Range | null>(null);
   const settingsContainerRef = useRef<HTMLDivElement>(null);
-  const dirtyNotesRef = useRef(false);
-  const backupPromptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRenderedNoteId = useRef<string | null>(null);
 
   // FIX: Moved activeNote and activeNoteRef declarations before they are used in useEffect.
@@ -293,7 +290,7 @@ export default function App() {
     }
   }, []);
 
-  // Save notes to localStorage whenever they change (Auto-save) & prompt for backup
+  // Save notes to localStorage whenever they change (Auto-save)
   useEffect(() => {
     if (isInitialMount.current) {
         isInitialMount.current = false;
@@ -309,27 +306,37 @@ export default function App() {
       saveStatusTimer.current = setTimeout(() => {
         setSaveStatus('idle');
       }, 2000);
-
-      // --- Backup Prompt Logic ---
-      dirtyNotesRef.current = true;
-      setShowBackupPrompt(false);
-      if (backupPromptTimer.current) clearTimeout(backupPromptTimer.current);
-      
-      // Show prompt after 10 seconds of inactivity
-      backupPromptTimer.current = setTimeout(() => {
-        if (dirtyNotesRef.current) {
-          setShowBackupPrompt(true);
-        }
-      }, 10000); 
-
     } catch (error) {
       console.error("Failed to save notes to localStorage", error);
     }
 
     return () => {
       if (saveStatusTimer.current) clearTimeout(saveStatusTimer.current);
-      if (backupPromptTimer.current) clearTimeout(backupPromptTimer.current);
     };
+  }, [notes]);
+  
+  // Check if backup is needed whenever notes change
+  useEffect(() => {
+    const checkBackupStatus = () => {
+      const lastBackupTimestamp = localStorage.getItem('nana-memo-last-backup-timestamp');
+      const lastBackupTime = lastBackupTimestamp ? parseInt(lastBackupTimestamp, 10) : 0;
+      const ONE_WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
+
+      // Condition 1: More than a week has passed since the last backup.
+      const needsBackupByTime = Date.now() - lastBackupTime > ONE_WEEK_IN_MS;
+
+      // Condition 2: A note has been pinned since the last backup.
+      const hasNewPin = localStorage.getItem('nana-memo-new-pin-since-backup') === 'true';
+
+      if (needsBackupByTime && hasNewPin) {
+        setShowBackupBadge(true);
+      } else {
+        setShowBackupBadge(false);
+      }
+    };
+
+    // Check on initial load (after notes are loaded) and on subsequent changes.
+    checkBackupStatus();
   }, [notes]);
 
   // --- Notification Pinning Logic ---
@@ -797,11 +804,11 @@ const pinToNotification = async (note: Note) => {
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', filename);
     linkElement.click();
-    
+
+    localStorage.setItem('nana-memo-last-backup-timestamp', Date.now().toString());
+    localStorage.removeItem('nana-memo-new-pin-since-backup');
+    setShowBackupBadge(false);
     setShowSettings(false);
-    setShowBackupPrompt(false);
-    dirtyNotesRef.current = false;
-    if (backupPromptTimer.current) clearTimeout(backupPromptTimer.current);
 
     setToastMessage('バックアップファイルを保存しました。');
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -1002,6 +1009,9 @@ const pinToNotification = async (note: Note) => {
   
   const handleBulkPin = () => {
     const shouldPin = notes.some(note => selectedNoteIds.has(note.id) && !note.isPinned);
+    if (shouldPin) {
+      localStorage.setItem('nana-memo-new-pin-since-backup', 'true');
+    }
     setNotes(currentNotes =>
       currentNotes.map(note =>
         selectedNoteIds.has(note.id)
@@ -1136,25 +1146,6 @@ const pinToNotification = async (note: Note) => {
     </div>
   );
   
-  const BackupPromptToast = (
-    <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 w-11/12 max-w-md bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-4 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 ${showBackupPrompt ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="font-bold">データの保護</p>
-          <p className="text-sm text-slate-600 dark:text-slate-300">大切なメモを守るため、バックアップの作成をおすすめします。</p>
-        </div>
-        <div className="flex items-center space-x-2 flex-shrink-0 ml-4">
-          <button onClick={() => handleBackup()} className="px-3 py-1 text-sm rounded-full bg-rose-500 text-white font-semibold hover:bg-rose-600">
-            保存
-          </button>
-          <button onClick={() => setShowBackupPrompt(false)} className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-600">
-            <CloseIcon className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   const currentYear = new Date().getFullYear();
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
   
@@ -1189,7 +1180,12 @@ const pinToNotification = async (note: Note) => {
                 <button onClick={() => handleToggleNotificationPin(activeNote)} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${isPinnedToNotification ? 'text-yellow-500 dark:text-yellow-400' : ''}`} aria-label="Pin to notification">
                     {isPinnedToNotification ? <BellIconFilled className="w-5 h-5" /> : <BellIcon className="w-5 h-5" />}
                 </button>
-                <button onClick={() => updateNote(activeNote.id, { isPinned: !activeNote.isPinned })} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><BookmarkIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
+                <button onClick={() => {
+                  if (!activeNote.isPinned) {
+                    localStorage.setItem('nana-memo-new-pin-since-backup', 'true');
+                  }
+                  updateNote(activeNote.id, { isPinned: !activeNote.isPinned });
+                }} className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${activeNote.isPinned ? 'text-rose-500' : ''}`}><BookmarkIcon className="w-5 h-5" isFilled={activeNote.isPinned} /></button>
                 <button onClick={() => requestDeleteNote(activeNote.id)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><TrashIcon className="w-5 h-5" /></button>
                 <button onClick={() => setActiveNoteId(null)} className="ml-2 px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500">完了</button>
             </div>
@@ -1392,7 +1388,12 @@ const pinToNotification = async (note: Note) => {
                     <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
                   </button>
                   <div className="relative" ref={settingsContainerRef}>
-                      <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Settings"><CogIcon className="w-6 h-6"/></button>
+                      <button onClick={() => setShowSettings(!showSettings)} className="relative p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors" aria-label="Settings">
+                          <CogIcon className="w-6 h-6"/>
+                          {showBackupBadge && (
+                            <span className="absolute top-1 right-1 block w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-amber-50 dark:ring-slate-800" aria-label="バックアップ推奨"></span>
+                          )}
+                      </button>
                       {showSettings && (
                           <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
                               {installPrompt && (
@@ -1480,7 +1481,6 @@ const pinToNotification = async (note: Note) => {
       {ConfirmationModal}
       {BulkDeleteModal}
       {RestoreConfirmModal}
-      {BackupPromptToast}
       {Toast}
     </>
   );
