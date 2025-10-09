@@ -3,8 +3,17 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { GoogleGenAI } from "@google/genai";
 
 // --- Gemini API Initialization ---
-// This assumes the API_KEY is set in the environment variables
-const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+let ai: GoogleGenAI | null = null;
+try {
+  // 環境変数にAPIキーが設定されていない場合、ブラウザ環境ではエラーが発生します。
+  // これをキャッチして、アプリの他の部分が機能し続けるようにします。
+  ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+} catch (error) {
+  console.error(
+    "Gemini APIの初期化に失敗しました。AI関連機能は無効になります。",
+    error
+  );
+}
 
 // --- Type Definitions ---
 type Note = {
@@ -908,6 +917,14 @@ const pinToNotification = async (note: Note) => {
   };
 
   const handleAiBackup = async () => {
+    if (!ai) {
+      setToastMessage('AI機能は現在利用できません。(APIキー未設定)');
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
+      setShowSettings(false);
+      return;
+    }
+
     if (notes.length === 0) {
       setToastMessage('バックアップするメモがありません。');
       if (toastTimer.current) clearTimeout(toastTimer.current);
