@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -47,16 +46,7 @@ const isSameDay = (d1: Date, d2: Date) => {
 // --- Icon Components ---
 const RabbitIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-      <g filter="url(#neon-glow)" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none">
+      <g stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none">
         {/* Head */}
         <path d="M83,59 C83,75.5,68.5,89,50,89 C31.5,89,17,75.5,17,59 C17,42.5,31.5,29,50,29 C68.5,29,83,42.5,83,59Z" />
         {/* Ears */}
@@ -177,7 +167,7 @@ const COLOR_HEX_MAP_DARK: { [key: string]: string } = {
   'text-slate-800 dark:text-slate-200': '#e2e8f0', // slate-200
   'text-rose-600 dark:text-rose-400': '#fb7185',   // rose-400
   'text-blue-600 dark:text-blue-400': '#60a5fa',   // blue-400
-  'text-green-600 dark:text-green-400': '#4ade80', // green-400
+  'text-green-600 dark:text-green-400': '#4ade80', // green-600
   'text-yellow-600 dark:text-yellow-400': '#facc15',// yellow-400
   'text-purple-600 dark:text-purple-400': '#c084fc',// purple-400
 };
@@ -189,6 +179,64 @@ const FONT_SIZE_COMMAND_MAP: { [key: string]: string } = {
   'text-xl': '5',   // 18pt
 };
 
+
+// --- Note Item Component (Memoized for performance) ---
+type NoteItemProps = {
+  note: Note;
+  isSelected: boolean;
+  isSelectionMode: boolean;
+  onClick: (id: string) => void;
+  onPointerDown: (id: string) => void;
+  onPointerUp: () => void;
+  onPointerLeave: () => void;
+  onContextMenu: (e: React.MouseEvent<HTMLDivElement>, id: string) => void;
+};
+
+const NoteItem = React.memo<NoteItemProps>(({ note, isSelected, isSelectionMode, onClick, onPointerDown, onPointerUp, onPointerLeave, onContextMenu }) => {
+  const plainTextContent = useMemo(() => getPlainText(note.content) || '新規メモ', [note.content]);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onClick(note.id)}
+      onPointerDown={() => onPointerDown(note.id)}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
+      onContextMenu={(e) => onContextMenu(e, note.id)}
+      className={`relative flex w-full text-left rounded-lg shadow-md bg-white dark:bg-slate-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden ${note.font}`}
+    >
+      {/* Date Section (Left) */}
+      <div className="flex-shrink-0 flex flex-col items-center justify-center w-20 p-4 border-r border-slate-100 dark:border-slate-600">
+          <span className="text-4xl font-bold text-rose-500 dark:text-rose-400 font-sans">{formatDay(note.updatedAt)}</span>
+          <span className="text-base font-kiwi text-slate-600 dark:text-slate-300 mt-1">{formatTime(note.updatedAt)}</span>
+      </div>
+
+      {/* Content Section (Right) */}
+      <div className="flex-grow p-4 min-w-0 flex items-center">
+          <p className={`whitespace-pre-wrap break-words line-clamp-4 ${note.color} ${note.fontSize || 'text-lg'}`}>
+              {plainTextContent}
+          </p>
+      </div>
+
+      {note.isPinned && (
+          <div className="absolute top-0 right-0 w-8 h-8">
+              <div className="absolute top-0 right-0 w-0 h-0 border-8 border-solid border-transparent border-t-rose-400 dark:border-t-rose-500 border-r-rose-400 dark:border-r-rose-500" style={{ borderTopRightRadius: '0.5rem' }}></div>
+          </div>
+      )}
+      
+      {isSelectionMode && (
+        <div className={`absolute inset-0 rounded-lg transition-all pointer-events-none ${isSelected ? 'ring-2 ring-rose-500 ring-inset' : ''}`}>
+            {isSelected && (
+                <div className="absolute top-2 right-2 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center shadow-lg">
+                    <CheckIcon className="w-4 h-4 text-white" />
+                </div>
+            )}
+        </div>
+      )}
+    </div>
+  );
+});
 
 // --- Main App Component ---
 export default function App() {
@@ -882,6 +930,14 @@ const pinToNotification = async (note: Note) => {
         setActiveNoteId(noteId);
     }
   }, [isSelectionMode, toggleNoteSelection]);
+  
+  const handleContextMenu = useCallback((e: React.MouseEvent, noteId: string) => {
+    e.preventDefault();
+    if (!isSelectionMode) {
+        setIsSelectionMode(true);
+    }
+    setSelectedNoteIds(prev => new Set(prev).add(noteId));
+  }, [isSelectionMode]);
 
   const confirmBulkDelete = () => {
     const idsToDelete = Array.from(selectedNoteIds);
@@ -1303,64 +1359,32 @@ const pinToNotification = async (note: Note) => {
             </div>
           </div>
         ) : (
-           <div className="flex justify-between items-baseline px-4 pb-2 text-slate-500 dark:text-slate-400 border-b border-amber-200 dark:border-slate-700">
+          <>
+            <div className="flex justify-between items-baseline px-4 pt-2 text-slate-500 dark:text-slate-400">
               <h2 className="text-2xl font-kiwi font-bold">{currentYear} / {currentMonth}</h2>
               <span className="text-sm font-medium">{currentMonthNoteCount}件のメモ</span>
-           </div>
+            </div>
+            <RabbitBorder isDarkMode={isDarkMode} />
+          </>
         )}
         
         <main className="flex-grow p-4 overflow-y-auto">
           {filteredNotes.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredNotes.map(note => {
-                const isSelected = selectedNoteIds.has(note.id);
-                return (
-                  <div
+              {filteredNotes.map(note => (
+                  <NoteItem
                     key={note.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleClick(note.id)}
-                    onPointerDown={() => handlePointerDown(note.id)}
+                    note={note}
+                    isSelected={selectedNoteIds.has(note.id)}
+                    isSelectionMode={isSelectionMode}
+                    onClick={handleClick}
+                    onPointerDown={handlePointerDown}
                     onPointerUp={handlePointerUp}
                     onPointerLeave={handlePointerUp}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      if (!isSelectionMode) setIsSelectionMode(true);
-                      setSelectedNoteIds(prev => new Set(prev).add(note.id));
-                    }}
-                    className={`relative flex w-full text-left rounded-lg shadow-md bg-white dark:bg-slate-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden ${note.font}`}
-                  >
-                    {/* Date Section (Left) */}
-                    <div className="flex-shrink-0 flex flex-col items-center justify-center w-20 p-4 border-r border-slate-100 dark:border-slate-600">
-                        <span className="text-3xl font-bold text-rose-500 dark:text-rose-400 font-sans">{formatDay(note.updatedAt)}</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatTime(note.updatedAt)}</span>
-                    </div>
-
-                    {/* Content Section (Right) */}
-                    <div className="flex-grow p-4 min-w-0 flex items-center">
-                        <p className={`whitespace-pre-wrap break-words line-clamp-4 ${note.color} ${note.fontSize || 'text-lg'}`}>
-                            {getPlainText(note.content) || '新規メモ'}
-                        </p>
-                    </div>
-
-                    {note.isPinned && (
-                        <div className="absolute top-0 right-0 w-8 h-8">
-                           <div className="absolute top-0 right-0 w-0 h-0 border-8 border-solid border-transparent border-t-rose-400 dark:border-t-rose-500 border-r-rose-400 dark:border-r-rose-500" style={{ borderTopRightRadius: '0.5rem' }}></div>
-                        </div>
-                    )}
-                   
-                    {isSelectionMode && (
-                      <div className={`absolute inset-0 rounded-lg transition-all pointer-events-none ${isSelected ? 'ring-2 ring-rose-500 ring-inset' : ''}`}>
-                          {isSelected && (
-                              <div className="absolute top-2 right-2 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center shadow-lg">
-                                  <CheckIcon className="w-4 h-4 text-white" />
-                              </div>
-                          )}
-                      </div>
-                    )}
-                  </div>
+                    onContextMenu={handleContextMenu}
+                  />
                 )
-              })}
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center">
