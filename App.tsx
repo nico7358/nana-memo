@@ -485,6 +485,70 @@ const NoteItem = React.memo<NoteItemProps>(
   }
 );
 
+const DeleteConfirmationModal: React.FC<{
+  isOpen: boolean;
+  itemCount: number;
+  itemPreview?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ isOpen, itemCount, itemPreview, onConfirm, onCancel }) => {
+  if (!isOpen) return null;
+
+  const title = itemCount > 1 ? `${itemCount}件のメモを削除` : "メモの削除";
+  const message =
+    itemCount > 1
+      ? "本当にこれらのメモを削除しますか？この操作は取り消せません。"
+      : "本当にこのメモを削除しますか？";
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-confirmation-title"
+    >
+      <div
+        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="delete-confirmation-title"
+          className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center mb-2"
+        >
+          {title}
+        </h2>
+        <p className="text-slate-600 dark:text-slate-300 mb-4 text-center">
+          {message}
+        </p>
+
+        {itemPreview && (
+          <div className="bg-slate-100 dark:bg-slate-700 p-3 rounded-md mb-6 max-h-24 overflow-y-auto">
+            <p className="text-sm text-slate-700 dark:text-slate-300 break-words">
+              {itemPreview}
+            </p>
+          </div>
+        )}
+
+        <div className="flex justify-end space-x-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-md border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-red-500"
+          >
+            削除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App Component ---
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -735,11 +799,6 @@ export default function App() {
     };
   }, [showSettings]);
 
-  const noteToDelete = useMemo(
-    () => notes.find((note) => note.id === noteIdToDelete),
-    [notes, noteIdToDelete]
-  );
-
   const filteredNotes = useMemo(() => {
     // FIX: Corrected a typo in the sort function where `a.b.updatedAt` was used instead of `a.updatedAt`.
     const sorted = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -974,10 +1033,6 @@ export default function App() {
       setActiveNoteId(null);
     }
     unpinFromNotification(noteIdToDelete); // Also unpin from notification if deleted
-    setNoteIdToDelete(null);
-  };
-
-  const cancelDeleteNote = () => {
     setNoteIdToDelete(null);
   };
 
@@ -1406,93 +1461,6 @@ export default function App() {
     return days;
   }, [calendarDate, notesByDate]);
 
-  const ConfirmationModal = noteIdToDelete && (
-    <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300"
-      onClick={cancelDeleteNote}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="delete-confirmation-title"
-    >
-      <div
-        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id="delete-confirmation-title"
-          className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center mb-2"
-        >
-          メモの削除
-        </h2>
-        <p className="text-slate-600 dark:text-slate-300 mb-4 text-center">
-          本当にこのメモを削除しますか？
-        </p>
-
-        {noteToDelete && getPlainText(noteToDelete.content) && (
-          <div className="bg-slate-100 dark:bg-slate-700 p-3 rounded-md mb-6 max-h-24 overflow-y-auto">
-            <p className="text-sm text-slate-700 dark:text-slate-300 break-words">
-              {getPlainText(noteToDelete.content)}
-            </p>
-          </div>
-        )}
-
-        <div className="flex justify-end space-x-3">
-          <button
-            onClick={cancelDeleteNote}
-            className="px-4 py-2 rounded-md bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
-          >
-            キャンセル
-          </button>
-          <button
-            onClick={confirmDeleteNote}
-            className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-red-500"
-          >
-            削除
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const BulkDeleteModal = showBulkDeleteConfirm && (
-    <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300"
-      onClick={() => setShowBulkDeleteConfirm(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="bulk-delete-title"
-    >
-      <div
-        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id="bulk-delete-title"
-          className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center mb-4"
-        >
-          {selectedNoteIds.size}件のメモを削除
-        </h2>
-        <p className="text-slate-600 dark:text-slate-300 mb-6 text-center">
-          本当にこれらのメモを削除しますか？この操作は取り消せません。
-        </p>
-        <div className="flex justify-end space-x-3">
-          <button
-            onClick={() => setShowBulkDeleteConfirm(false)}
-            className="px-4 py-2 rounded-md bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
-          >
-            キャンセル
-          </button>
-          <button
-            onClick={confirmBulkDelete}
-            className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-red-500"
-          >
-            削除
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   const RestoreConfirmModal = showRestoreConfirm && (
     <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -1557,10 +1525,28 @@ export default function App() {
     }).length;
   }, [notes]);
 
-  if (activeNote) {
-    const isPinnedToNotification = pinnedToNotificationIds.has(activeNote.id);
-    return (
-      <>
+  const noteToDelete = useMemo(
+    () => notes.find((note) => note.id === noteIdToDelete),
+    [notes, noteIdToDelete]
+  );
+
+  const handleConfirmDelete = () => {
+    if (showBulkDeleteConfirm) {
+      confirmBulkDelete();
+    } else if (noteIdToDelete) {
+      confirmDeleteNote();
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setNoteIdToDelete(null);
+    setShowBulkDeleteConfirm(false);
+  };
+
+  const renderCurrentView = () => {
+    if (activeNote) {
+      const isPinnedToNotification = pinnedToNotificationIds.has(activeNote.id);
+      return (
         <div
           className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300`}
         >
@@ -1771,15 +1757,11 @@ export default function App() {
             />
           </main>
         </div>
-        {ConfirmationModal}
-        {Toast}
-      </>
-    );
-  }
+      );
+    }
 
-  if (viewMode === "calendar") {
-    return (
-      <>
+    if (viewMode === "calendar") {
+      return (
         <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
           <header className="flex items-center justify-between p-4 border-b border-amber-200 dark:border-slate-700">
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -1906,14 +1888,10 @@ export default function App() {
             )}
           </main>
         </div>
-        {ConfirmationModal}
-        {Toast}
-      </>
-    );
-  }
+      );
+    }
 
-  return (
-    <>
+    return (
       <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
         <header className="flex items-center justify-between p-4 border-b border-amber-200 dark:border-slate-700">
           {isSelectionMode ? (
@@ -2104,8 +2082,21 @@ export default function App() {
           </button>
         )}
       </div>
-      {ConfirmationModal}
-      {BulkDeleteModal}
+    );
+  };
+
+  return (
+    <>
+      {renderCurrentView()}
+      <DeleteConfirmationModal
+        isOpen={showBulkDeleteConfirm || !!noteIdToDelete}
+        itemCount={showBulkDeleteConfirm ? selectedNoteIds.size : 1}
+        itemPreview={
+          noteToDelete ? getPlainText(noteToDelete.content) : undefined
+        }
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
       {RestoreConfirmModal}
       {Toast}
     </>
