@@ -1032,8 +1032,11 @@ export default function App() {
     if (activeNoteId === noteIdToDelete) {
       setActiveNoteId(null);
     }
-    unpinFromNotification(noteIdToDelete); // Also unpin from notification if deleted
+    unpinFromNotification(noteIdToDelete, false); // Also unpin from notification if deleted, without toast
     setNoteIdToDelete(null);
+    setToastMessage("メモを削除しました。");
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
   };
 
   const pinToNotification = async (note: Note) => {
@@ -1076,7 +1079,7 @@ export default function App() {
     }
   };
 
-  const unpinFromNotification = async (noteId: string) => {
+  const unpinFromNotification = async (noteId: string, showToast = true) => {
     // Optimistically update UI
     setPinnedToNotificationIds((prev) => {
       const newSet = new Set(prev);
@@ -1092,9 +1095,11 @@ export default function App() {
         tag: `note-${noteId}`,
       });
       notifications.forEach((notification) => notification.close());
-      setToastMessage("通知の設定を解除しました。");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
+      if (showToast) {
+        setToastMessage("通知の設定を解除しました。");
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
+      }
     } catch (error) {
       console.error(
         "Failed to unpin notification:",
@@ -1102,9 +1107,11 @@ export default function App() {
       );
       // Revert state on failure
       setPinnedToNotificationIds((prev) => new Set(prev).add(noteId));
-      setToastMessage("通知の解除に失敗しました。");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
+      if (showToast) {
+        setToastMessage("通知の解除に失敗しました。");
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
+      }
     }
   };
 
@@ -1397,9 +1404,12 @@ export default function App() {
   const confirmBulkDelete = () => {
     const idsToDelete = Array.from(selectedNoteIds);
     setNotes((notes) => notes.filter((note) => !idsToDelete.includes(note.id)));
-    idsToDelete.forEach((id) => unpinFromNotification(id)); // Also unpin
+    idsToDelete.forEach((id) => unpinFromNotification(id, false)); // Also unpin without toast
     setShowBulkDeleteConfirm(false);
     exitSelectionMode();
+    setToastMessage(`${idsToDelete.length}件のメモを削除しました。`);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
   };
 
   const handleBulkPin = () => {
@@ -1504,7 +1514,7 @@ export default function App() {
 
   const Toast = (
     <div
-      className={`fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full text-sm shadow-lg z-50 transition-opacity duration-300 ${
+      className={`fixed top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full text-sm shadow-lg z-50 transition-opacity duration-300 ${
         toastMessage ? "opacity-100" : "opacity-0 pointer-events-none"
       }`}
     >
