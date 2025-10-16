@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+
+// メインのAppコンポーネントを遅延読み込みする
+const App = lazy(() => import('./App'));
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -8,9 +10,13 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+// Reactが#rootにマウントされると、index.html内の初期スピナーは自動的に置き換えられて消える
 root.render(
   <React.StrictMode>
-    <App />
+    {/* Suspenseのfallbackはnullにする。初期表示はindex.htmlのスピナーが担当するため */}
+    <Suspense fallback={null}>
+      <App />
+    </Suspense>
   </React.StrictMode>
 );
 

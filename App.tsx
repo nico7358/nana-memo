@@ -72,7 +72,7 @@ const BookmarkIcon: React.FC<{ className?: string, isFilled?: boolean }> = ({ cl
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
     {isFilled 
       ? <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
-      : <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2z"/>
+      : <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
     }
   </svg>
 );
@@ -199,7 +199,7 @@ const NoteItem = React.memo<NoteItemProps>(({ note, isSelected, isSelectionMode,
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
       onContextMenu={(e) => onContextMenu(e, note.id)}
-      className={`relative flex w-full text-left rounded-lg shadow-md bg-white dark:bg-slate-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden ${note.font}`}
+      className={`relative flex w-full text-left rounded-lg shadow-md bg-white dark:bg-slate-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden`}
     >
       {/* Date Section (Left) */}
       <div className="flex-shrink-0 flex flex-col items-center justify-center w-20 p-4 border-r border-slate-100 dark:border-slate-600">
@@ -209,7 +209,7 @@ const NoteItem = React.memo<NoteItemProps>(({ note, isSelected, isSelectionMode,
 
       {/* Content Section (Right) */}
       <div className="flex-grow p-4 min-w-0 flex items-center">
-          <p className={`whitespace-pre-wrap break-words line-clamp-4 ${note.color} ${note.fontSize || 'text-lg'}`}>
+          <p className={`whitespace-pre-wrap break-words line-clamp-4 ${note.font} ${note.color} ${note.fontSize || 'text-lg'}`}>
               {plainTextContent}
           </p>
       </div>
@@ -1162,7 +1162,7 @@ const pinToNotification = async (note: Note) => {
     const isPinnedToNotification = pinnedToNotificationIds.has(activeNote.id);
     return (
       <>
-        <div className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300 ${activeNote.font}`}>
+        <div className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300`}>
           <header className="relative flex-shrink-0 flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
             <div className="flex items-center space-x-2">
                 <button onClick={() => setActiveNoteId(null)} className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"><ChevronLeftIcon className="w-6 h-6" /></button>
