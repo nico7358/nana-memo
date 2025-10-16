@@ -577,6 +577,8 @@ export default function App() {
     Set<string>
   >(new Set());
   const [showBackupBadge, setShowBackupBadge] = useState(false);
+  const [sortByPin, setSortByPin] = useState(true); // State for pin sorting
+  const [startVoiceOnMount, setStartVoiceOnMount] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -747,6 +749,27 @@ export default function App() {
     };
   }, []);
 
+  const handleVoiceInput = useCallback(() => {
+    const recognition = recognitionRef.current;
+    if (!recognition) {
+      setToastMessage("音声認識はこのブラウザではサポートされていません。");
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
+      return;
+    }
+
+    if (isListening) {
+      recognition.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Could not start recognition", e);
+      }
+    }
+  }, [isListening]);
+
   // Focus editor when a note is opened and sync content
   useEffect(() => {
     if (activeNote && editorRef.current) {
@@ -757,13 +780,18 @@ export default function App() {
         lastRenderedNoteId.current = activeNote.id;
       }
       editorRef.current.focus();
+
+      if (startVoiceOnMount) {
+        handleVoiceInput();
+        setStartVoiceOnMount(false);
+      }
     } else {
       // Reset when no note is active
       lastRenderedNoteId.current = null;
     }
     // Enable CSS styling for execCommand to use <span> instead of <font> tags.
     document.execCommand("styleWithCSS", false, "true");
-  }, [activeNote]);
+  }, [activeNote, startVoiceOnMount, handleVoiceInput]);
 
   // Handle deep-linking from notifications
   useEffect(() => {
@@ -800,12 +828,9 @@ export default function App() {
   }, [showSettings]);
 
   const filteredNotes = useMemo(() => {
-    // FIX: Corrected a typo in the sort function where `a.b.updatedAt` was used instead of `a.updatedAt`.
-    const sorted = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
-    const pinned = sorted.filter((n) => n.isPinned);
-    const unpinned = sorted.filter((n) => !n.isPinned);
+    const sortedByDate = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
 
-    const applyFilter = (arr: Note[]) =>
+    const applySearchFilter = (arr: Note[]) =>
       searchTerm
         ? arr.filter((n) =>
             getPlainText(n.content)
@@ -814,10 +839,16 @@ export default function App() {
           )
         : arr;
 
-    return [...applyFilter(pinned), ...applyFilter(unpinned)];
-  }, [notes, searchTerm]);
+    if (sortByPin) {
+      const pinned = sortedByDate.filter((n) => n.isPinned);
+      const unpinned = sortedByDate.filter((n) => !n.isPinned);
+      return [...applySearchFilter(pinned), ...applySearchFilter(unpinned)];
+    } else {
+      return applySearchFilter(sortedByDate);
+    }
+  }, [notes, searchTerm, sortByPin]);
 
-  const createNote = () => {
+  const createNote = (startWithVoice = false) => {
     const newNote: Note = {
       id: Date.now().toString(),
       content: "",
@@ -828,7 +859,10 @@ export default function App() {
       font: "font-sans",
       fontSize: "text-lg",
     };
-    setNotes([newNote, ...notes]);
+    setNotes((prevNotes) => [newNote, ...prevNotes]);
+    if (startWithVoice) {
+      setStartVoiceOnMount(true);
+    }
     setActiveNoteId(newNote.id);
   };
 
@@ -1000,27 +1034,6 @@ export default function App() {
       recognition.stop();
     };
   }, [updateNote]);
-
-  const handleVoiceInput = () => {
-    const recognition = recognitionRef.current;
-    if (!recognition) {
-      setToastMessage("音声認識はこのブラウザではサポートされていません。");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-      return;
-    }
-
-    if (isListening) {
-      recognition.stop();
-      setIsListening(false);
-    } else {
-      try {
-        recognition.start();
-      } catch (e) {
-        console.error("Could not start recognition", e);
-      }
-    }
-  };
 
   const requestDeleteNote = (id: string) => {
     setNoteIdToDelete(id);
@@ -1497,7 +1510,7 @@ export default function App() {
         <div className="flex justify-end space-x-3">
           <button
             onClick={() => setShowRestoreConfirm(null)}
-            className="px-4 py-2 rounded-md bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
+            className="px-4 py-2 rounded-md border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
           >
             キャンセル
           </button>
@@ -1945,6 +1958,20 @@ export default function App() {
               </div>
               <div className="flex items-center space-x-2">
                 <button
+                  onClick={() => setSortByPin((prev) => !prev)}
+                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
+                    sortByPin
+                      ? "text-rose-500 dark:text-rose-400"
+                      : "text-slate-600 dark:text-slate-400"
+                  }`}
+                  aria-label="ピン留めを先頭に表示"
+                  title={
+                    sortByPin ? "ピン留め優先ソート中" : "更新日時順ソート中"
+                  }
+                >
+                  <BookmarkIcon className="w-6 h-6" isFilled={true} />
+                </button>
+                <button
                   onClick={() => {
                     if (showSearchBar) setSearchTerm("");
                     setShowSearchBar(!showSearchBar);
@@ -2083,13 +2110,31 @@ export default function App() {
         </main>
 
         {!isSelectionMode && (
-          <button
-            onClick={createNote}
-            className="group absolute bottom-6 right-6 w-16 h-16 flex items-center justify-center rounded-full bg-rose-500 text-white shadow-lg hover:bg-rose-600 focus:outline-none focus:ring-4 focus:ring-rose-300 dark:focus:ring-rose-700 transition-transform transform hover:scale-105"
-            aria-label="New Note"
-          >
-            <PlusIcon className="w-10 h-10 transition-transform duration-300 group-hover:rotate-90" />
-          </button>
+          <footer className="flex-shrink-0 p-2 border-t border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => createNote()}
+                className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
+                aria-label="新規メモ"
+              >
+                <PlusIcon className="w-6 h-6 text-slate-600 dark:text-slate-200" />
+              </button>
+              <button
+                onClick={() => createNote()}
+                className="flex-grow h-12 text-left px-4 rounded-full bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                aria-label="メモを入力して開始"
+              >
+                メモを入力...
+              </button>
+              <button
+                onClick={() => createNote(true)}
+                className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
+                aria-label="音声入力で新規メモ"
+              >
+                <MicrophoneIcon className="w-6 h-6 text-slate-600 dark:text-slate-200" />
+              </button>
+            </div>
+          </footer>
         )}
       </div>
     );
