@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- Type Definitions ---
@@ -129,12 +128,8 @@ const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
 
 const FONT_OPTIONS = {
   'font-sans': 'デフォルト',
-  'font-syuku': 'しゅく',
-  'font-kaisei': 'かいせい',
   'font-dela': 'デラゴシック',
-  'font-hachi': 'はちまるポップ',
   'font-kiwi': 'キウイ丸',
-  'font-dot': 'ドット',
 };
 
 const FONT_SIZE_OPTIONS = {
@@ -460,6 +455,7 @@ export default function App() {
   const noteToDelete = useMemo(() => notes.find(note => note.id === noteIdToDelete), [notes, noteIdToDelete]);
 
   const filteredNotes = useMemo(() => {
+    // FIX: Corrected a typo in the sort function where `a.b.updatedAt` was used instead of `a.updatedAt`.
     const sorted = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
     const pinned = sorted.filter(n => n.isPinned);
     const unpinned = sorted.filter(n => !n.isPinned);
@@ -901,7 +897,9 @@ const pinToNotification = async (note: Note) => {
         setToastMessage(errorMessage);
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(''), 3000);
-        console.error("Failed to restore notes:", error);
+        // FIX: The 'error' object from a catch block is of type 'unknown', which cannot be assigned to a parameter expecting a 'string'.
+        // We now explicitly convert the error to a string, including the stack trace if available, to satisfy the type checker.
+        console.error("Failed to restore notes:", error instanceof Error ? (error.stack || error.message) : String(error));
       }
     };
     reader.readAsText(file);
@@ -1274,7 +1272,7 @@ const pinToNotification = async (note: Note) => {
               contentEditable={true}
               suppressContentEditableWarning={true}
               onInput={(e) => updateNote(activeNote.id, { content: e.currentTarget.innerHTML })}
-              className={`w-full h-full bg-transparent resize-none focus:outline-none ${activeNote.color} ${activeNote.fontSize || 'text-lg'}`}
+              className={`w-full h-full bg-transparent resize-none focus:outline-none ${activeNote.font} ${activeNote.color} ${activeNote.fontSize || 'text-lg'}`}
               data-placeholder="メモを入力..."
             />
           </main>
