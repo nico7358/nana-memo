@@ -554,16 +554,18 @@ const DeleteConfirmationModal: React.FC<{
 // --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
-    // ✅ 外部のwasmファイルを参照してSQL.jsを初期化
-    // -----------------------------------------------------------------------------------------
-    // 💡 修正点: トップレベルでインポートした initSqlJs を使用し、
-    //           locateFileを最もシンプルなルート相対パス (`/`) に変更します。
-    //           これにより、ビルド後の public フォルダ直下にあるファイルを参照します。
     const SQL = await initSqlJs({
-      // publicフォルダ直下の sql-wasm.wasm を参照するためのパス
-      locateFile: (file: string) => `/${file}`,
+      // 💡 修正案: window.location.pathname を利用してベースパスを考慮します
+      locateFile: (file: string) => {
+        // 例: https://nana-memo.vercel.app/app/index.html にいる場合、
+        // /app/sql-wasm.wasm を探すようにする
+        const baseDir = window.location.pathname.substring(
+          0,
+          window.location.pathname.lastIndexOf("/")
+        );
+        return `${baseDir}/${file}`;
+      },
     });
-    // -----------------------------------------------------------------------------------------
 
     const buffer = await file.arrayBuffer();
     const db = new SQL.Database(new Uint8Array(buffer));
