@@ -554,17 +554,10 @@ const DeleteConfirmationModal: React.FC<{
 // --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
+    // 💡 最終案: window.location.origin を使用し、常にルートからの絶対パスを構築
+    // locateFile は WebAssembly ファイルのフルURLを返すべきです。
     const SQL = await initSqlJs({
-      // 💡 修正案: window.location.pathname を利用してベースパスを考慮します
-      locateFile: (file: string) => {
-        // 例: https://nana-memo.vercel.app/app/index.html にいる場合、
-        // /app/sql-wasm.wasm を探すようにする
-        const baseDir = window.location.pathname.substring(
-          0,
-          window.location.pathname.lastIndexOf("/")
-        );
-        return `${baseDir}/${file}`;
-      },
+      locateFile: (file: string) => `${window.location.origin}/${file}`,
     });
 
     const buffer = await file.arrayBuffer();
