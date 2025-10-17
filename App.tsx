@@ -551,13 +551,19 @@ const DeleteConfirmationModal: React.FC<{
   );
 };
 
-// --- ここから追加 ---
+// --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
-    // ✅ ESM環境でのsql.js初期化対応
+    // ✅ 外部のwasmファイルを参照してSQL.jsを初期化
+    // -----------------------------------------------------------------------------------------
+    // 💡 修正点: トップレベルでインポートした initSqlJs を使用し、
+    //           locateFileを最もシンプルなルート相対パス (`/`) に変更します。
+    //           これにより、ビルド後の public フォルダ直下にあるファイルを参照します。
     const SQL = await initSqlJs({
+      // publicフォルダ直下の sql-wasm.wasm を参照するためのパス
       locateFile: (file: string) => `/${file}`,
     });
+    // -----------------------------------------------------------------------------------------
 
     const buffer = await file.arrayBuffer();
     const db = new SQL.Database(new Uint8Array(buffer));
