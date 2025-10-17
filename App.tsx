@@ -579,19 +579,20 @@ const DeleteConfirmationModal: React.FC<{
 // --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
-    // 💡 修正点: initSqlJs を呼び出す代わりに、既にグローバルで初期化済みの SQL オブジェクトを待機/使用
+    // 💡 修正点: WASMのロード完了を待機するため、短い遅延（例：50ミリ秒）を挿入
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
     let currentSQL = SQL;
 
     if (!currentSQL && initPromise) {
-      // もし初期化が完了していない場合は待機する
       currentSQL = await initPromise;
     } else if (!currentSQL) {
-      // 万が一、initPromiseがない場合は、エラーとする
       throw new Error("SQL.js の初期化プロミスが見つかりません。");
     }
 
     const buffer = await file.arrayBuffer();
-    // ここで currentSQL を使用します
+    // 🔴 データベースインスタンスの作成
+    // エラーはここで発生している可能性が高い
     const db = new currentSQL.Database(new Uint8Array(buffer));
 
     // テーブル名を取得
