@@ -554,10 +554,17 @@ const DeleteConfirmationModal: React.FC<{
 // --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
-    // 💡 最終案: window.location.origin を使用し、常にルートからの絶対パスを構築
-    // locateFile は WebAssembly ファイルのフルURLを返すべきです。
+    // 💡 最終修正案: import.meta.env.BASE_URL を利用して、
+    // アプリがデプロイされているベースパスを確実に取得し、パスの起点を設定します。
+    // 例: Vercelでサブディレクトリにデプロイされていても正しく動作します。
+    const baseURL = import.meta.env.BASE_URL || "/"; // Vite環境でBASE_URLを取得
+
     const SQL = await initSqlJs({
-      locateFile: (file: string) => `${window.location.origin}/${file}`,
+      locateFile: (file: string) => {
+        // file は通常 'sql-wasm.wasm'
+        // BASE_URL が '/memo/' なら、戻り値は '/memo/sql-wasm.wasm' となる。
+        return `${baseURL}${file}`;
+      },
     });
 
     const buffer = await file.arrayBuffer();
