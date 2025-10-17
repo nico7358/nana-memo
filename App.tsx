@@ -551,63 +551,63 @@ const DeleteConfirmationModal: React.FC<{
   );
 };
 
+// --- ここから追加 ---
+async function parseMimiNoteBackup(file: File): Promise<Note[]> {
+  try {
+    const SQL = await initSqlJs({
+      locateFile: () => "/sql-wasm.wasm", // ✅ publicフォルダに配置が必要
+    });
+
+    // SQLiteファイルをバイナリで読み込み
+    const buffer = await file.arrayBuffer();
+    const db = new SQL.Database(new Uint8Array(buffer));
+
+    // テーブル名を自動取得（mimi_notes / notes など）
+    const tables = db.exec(
+      "SELECT name FROM sqlite_master WHERE type='table';"
+    );
+    const tableName = tables[0]?.values?.[0]?.[0] || "mimi_notes";
+
+    // テーブルからすべての行を取得
+    const result = db.exec(`SELECT * FROM ${tableName}`);
+    if (!result.length) throw new Error("バックアップデータが空です。");
+
+    const rows = result[0].values;
+    const columns = result[0].columns;
+
+    // カラム名をキーにしてオブジェクト化
+    const notes: Note[] = rows.map((row: any[]) => {
+      const obj: any = {};
+      columns.forEach((col, i) => (obj[col] = row[i]));
+
+      const createdAt = obj.creation_date
+        ? new Date(obj.creation_date).getTime()
+        : Date.now();
+      const updatedAt = obj.update_date
+        ? new Date(obj.update_date).getTime()
+        : createdAt;
+
+      return {
+        id: String(obj._id || createdAt),
+        content: String(obj.text || ""),
+        createdAt,
+        updatedAt,
+        isPinned: Boolean(obj.ear === 1),
+        color: "text-slate-800 dark:text-slate-200",
+        font: "font-sans",
+        fontSize: "text-lg",
+      };
+    });
+
+    return notes;
+  } catch (error) {
+    console.error("ミミノートの解析中にエラー:", error);
+    throw new Error("ミミノートのバックアップ解析に失敗しました。");
+  }
+}
+// --- ここまで追加 ---
 // --- Main App Component ---
 export default function App() {
-  // --- ここから追加 ---
-  async function parseMimiNoteBackup(file: File): Promise<Note[]> {
-    try {
-      const SQL = await initSqlJs({
-        locateFile: () => "/sql-wasm.wasm", // ✅ publicフォルダに配置が必要
-      });
-
-      // SQLiteファイルをバイナリで読み込み
-      const buffer = await file.arrayBuffer();
-      const db = new SQL.Database(new Uint8Array(buffer));
-
-      // テーブル名を自動取得（mimi_notes / notes など）
-      const tables = db.exec(
-        "SELECT name FROM sqlite_master WHERE type='table';"
-      );
-      const tableName = tables[0]?.values?.[0]?.[0] || "mimi_notes";
-
-      // テーブルからすべての行を取得
-      const result = db.exec(`SELECT * FROM ${tableName}`);
-      if (!result.length) throw new Error("バックアップデータが空です。");
-
-      const rows = result[0].values;
-      const columns = result[0].columns;
-
-      // カラム名をキーにしてオブジェクト化
-      const notes: Note[] = rows.map((row: any[]) => {
-        const obj: any = {};
-        columns.forEach((col, i) => (obj[col] = row[i]));
-
-        const createdAt = obj.creation_date
-          ? new Date(obj.creation_date).getTime()
-          : Date.now();
-        const updatedAt = obj.update_date
-          ? new Date(obj.update_date).getTime()
-          : createdAt;
-
-        return {
-          id: String(obj._id || createdAt),
-          content: String(obj.text || ""),
-          createdAt,
-          updatedAt,
-          isPinned: Boolean(obj.ear === 1),
-          color: "text-slate-800 dark:text-slate-200",
-          font: "font-sans",
-          fontSize: "text-lg",
-        };
-      });
-
-      return notes;
-    } catch (error) {
-      console.error("ミミノートの解析中にエラー:", error);
-      throw new Error("ミミノートのバックアップ解析に失敗しました。");
-    }
-  }
-  // --- ここまで追加 ---
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
