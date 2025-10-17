@@ -555,9 +555,8 @@ const DeleteConfirmationModal: React.FC<{
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
     // ✅ ESM環境でのsql.js初期化対応
-    const initSqlJs = (await import("sql.js")).default;
     const SQL = await initSqlJs({
-      locateFile: (file: string) => `${window.location.origin}/${file}`, // public配下のwasmを利用
+      locateFile: (file: string) => `/${file}`,
     });
 
     const buffer = await file.arrayBuffer();
