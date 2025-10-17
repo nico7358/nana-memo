@@ -1,29 +1,22 @@
-import initSqlJs from "sql.js";
-import { SqlJsStatic } from "sql.js";
-// 💡 修正点: SQL.js の初期化をアプリケーション全体で一度だけ行うためのPromiseを作成
-// initSqlJs は WebAssembly のロードと初期化を行う非同期関数です。
-const initSQL = async () => {
-  // locateFile のパスは、既にネットワークタブで確認済みのため、これでOK
-  const baseURL = import.meta.env.BASE_URL || "/";
+// App.tsx のファイル先頭付近
+import initSqlJs, { SqlJsStatic } from "sql.js"; // SqlJsStatic もインポート
 
+// -----------------------------------------------------------
+// 💡 ステップ1: SQL.js の初期化をアプリケーション全体で一度だけ行う
+const initSQL = async () => {
+  // locateFile のパスは、ネットワーク確認結果に基づいて最も安定した方法を採用
+  const baseURL = import.meta.env.BASE_URL || "/";
   return await initSqlJs({
     locateFile: (file: string) => `${baseURL}${file}`,
   });
 };
 
-let SQL: SqlJsStatic | null = null;
-let initPromise: Promise<SqlJsStatic> | null = null;
-
-// アプリケーション起動時に一度だけ初期化を開始
-initPromise = initSQL()
-  .then((s) => {
-    SQL = s;
-    return s;
-  })
-  .catch((err) => {
-    console.error("SQL.js の初期化に失敗しました。", err);
-    throw err;
-  });
+// 初期化の結果を保持する Promise を作成し、一度だけ実行
+// この initPromise を await することで、初期化完了を確実に待てるようにします
+const initPromise: Promise<SqlJsStatic> = initSQL().catch((err) => {
+  console.error("[SQL Init] Failed to initialize SQL.js:", err);
+  throw err;
+});
 
 import React, {
   useState,
@@ -589,11 +582,12 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     } else if (!currentSQL) {
       throw new Error("SQL.js の初期化プロミスが見つかりません。");
     }
+    const SQL = await initPromise;
 
     const buffer = await file.arrayBuffer();
     // 🔴 データベースインスタンスの作成
     // エラーはここで発生している可能性が高い
-    const db = new currentSQL.Database(new Uint8Array(buffer));
+    const db = new SQL.Database(new Uint8Array(buffer));
 
     // テーブル名を取得
     const tables = db.exec(
