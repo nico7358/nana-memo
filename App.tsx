@@ -1,3 +1,5 @@
+import initSqlJs from "sql.js";
+
 import React, {
   useState,
   useEffect,
@@ -551,6 +553,87 @@ const DeleteConfirmationModal: React.FC<{
 
 // --- Main App Component ---
 export default function App() {
+  // --- ここから追加 ---
+  const parseMimiNoteBackup = async (file: File): Promise<Note[]> => {
+    console.log("ミミノートの解析を開始します (v1.6.2対応版)...");
+
+    try {
+      // 修正点: バージョン1.6.2では、初期化と同時にwasmファイルを渡すのではなく、
+      // locateFileプロパティでファイルの場所を教えるのが最も安定した方法です。
+      const SQL = await initSqlJs({
+        locateFile: (wasmFile) =>
+          `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/${wasmFile}`,
+      });
+
+      const buffer = await file.arrayBuffer();
+      // これ以降のデータベースを開く処理は、このバージョンのSQL.jsなら正しく動作します。
+      const db = new SQL.Database(new Uint8Array(buffer));
+
+      const tablesResult = db.exec(
+        "SELECT name FROM sqlite_master WHERE type='table' AND (name = 'mimi_notes' OR name = 'notes');"
+      );
+      if (!tablesResult[0]?.values?.[0]?.[0]) {
+        db.close();
+        throw new Error("メモのテーブルが見つかりませんでした。");
+      }
+      const tableName = tablesResult[0].values[0][0] as string;
+
+      const result = db.exec(`SELECT * FROM ${tableName}`);
+      db.close();
+
+      if (!result.length) return [];
+
+      const rows = result[0].values;
+      const columns = result[0].columns;
+
+      console.log("データベースから読み込んだ「生データ」:", { columns, rows });
+
+      const parseDateString = (dateStr: string | null | undefined): number => {
+        if (!dateStr || typeof dateStr !== "string") return Date.now();
+        const isoStr = dateStr.replace(" ", "T");
+        const date = new Date(isoStr);
+        return isNaN(date.getTime()) ? Date.now() : date.getTime();
+      };
+
+      const importedNotes = rows
+        .map((row: any[]) => {
+          const noteData: { [key: string]: any } = {};
+          columns.forEach((col, i) => (noteData[col] = row[i]));
+
+          const createdAt = parseDateString(noteData.creation_date);
+          const updatedAt = parseDateString(noteData.update_date);
+
+          const title = String(noteData.title || "");
+          const text = String(noteData.text || "");
+          let content = "";
+          if (title && text && title !== text) {
+            content = `<b>${title}</b><br><br>${text}`;
+          } else {
+            content = text || title;
+          }
+
+          return {
+            id: String(noteData._id || createdAt),
+            content: content,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            isPinned: noteData.ear === 1,
+            color: "text-slate-800 dark:text-slate-200",
+            font: "font-sans",
+            fontSize: "text-lg",
+          };
+        })
+        .filter(Boolean);
+
+      console.log("nanamemo形式に変換後の「完成データ」:", importedNotes);
+
+      return importedNotes;
+    } catch (error) {
+      console.error("ミミノートの解析中に致命的なエラーが発生しました:", error);
+      throw error;
+    }
+  };
+  // --- ここまで追加 ---
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1223,96 +1306,64 @@ export default function App() {
       fileInputRef.current.value = "";
     }
   };
-
-  const proceedWithRestore = (file: File | null) => {
+  const proceedWithRestore = async (file: File | null) => {
     if (!file) return;
-
     setShowRestoreConfirm(null);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result;
-        if (typeof text === "string") {
-          const parsedData = JSON.parse(text);
+    try {
+      let importedNotes: Note[] = [];
+      const fileName = file.name.toLowerCase();
 
-          if (!Array.isArray(parsedData)) {
-            throw new Error("無効なファイル形式です: 配列ではありません。");
-          }
+      // --- ここからが新しいロジック ---
+      if (fileName.endsWith(".json")) {
+        // JSONファイルの処理
+        const text = await file.text();
+        const parsedData = JSON.parse(text);
+        if (!Array.isArray(parsedData))
+          throw new Error("無効なJSONファイル形式です。");
 
-          if (parsedData.length === 0) {
-            setNotes([]);
-            setToastMessage("空のバックアップファイルを復元しました。");
-            if (toastTimer.current) clearTimeout(toastTimer.current);
-            toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
-            return;
-          }
-
-          const firstNote = parsedData[0];
-          let importedNotes: Note[];
-
-          if (
-            "id" in firstNote &&
-            "content" in firstNote &&
-            "createdAt" in firstNote
-          ) {
-            importedNotes = parsedData.map((n: any) => ({
-              id: n.id,
-              content: n.content,
-              createdAt: n.createdAt,
-              updatedAt: n.updatedAt,
-              isPinned: n.isPinned || false,
-              color: n.color || "text-slate-800 dark:text-slate-200",
-              font: n.font || "font-sans",
-              fontSize: n.fontSize || "text-lg",
-            }));
-          } else if ("note_id" in firstNote && "text" in firstNote) {
-            importedNotes = parsedData.map((note: any, index: number) => {
-              const createdAt = note.created_at
-                ? new Date(note.created_at).getTime()
-                : Date.now() - index;
-              const updatedAt = note.updated_at
-                ? new Date(note.updated_at).getTime()
-                : Date.now() - index;
-
-              return {
-                id: String(note.note_id || createdAt),
-                content: String(note.text || ""),
-                createdAt: isNaN(createdAt) ? Date.now() - index : createdAt,
-                updatedAt: isNaN(updatedAt) ? Date.now() - index : updatedAt,
-                isPinned: Boolean(note.pinned || false),
-                color: "text-slate-800 dark:text-slate-200",
-                font: "font-sans",
-                fontSize: "text-lg",
-              };
-            });
-          } else {
-            throw new Error(
-              "サポートされていないバックアップファイル形式です。"
-            );
-          }
-
-          setNotes(importedNotes);
-          setToastMessage("復元が完了しました。");
-          if (toastTimer.current) clearTimeout(toastTimer.current);
-          toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
+        // nanamemo形式か、古い形式かを判定して変換
+        if (parsedData.length > 0 && "content" in parsedData[0]) {
+          importedNotes = parsedData.map((n: any) => ({
+            id: n.id,
+            content: n.content,
+            createdAt: n.createdAt,
+            updatedAt: n.updatedAt,
+            isPinned: n.isPinned || false,
+            color: n.color || "text-slate-800 dark:text-slate-200",
+            font: n.font || "font-sans",
+            fontSize: n.fontSize || "text-lg",
+          }));
+        } else {
+          // 他のJSON形式からのインポートロジック (必要であれば)
         }
-      } catch (error) {
-        const detail = error instanceof Error ? `: ${error.message}` : "";
-        const errorMessage = `復元に失敗しました${detail}`;
-
-        setToastMessage(errorMessage);
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-        console.error(
-          "Failed to restore notes:",
-          error instanceof Error ? error.stack || error.message : String(error)
-        );
+      } else if (fileName.endsWith(".mimibk")) {
+        // ミミノート(.mimibk)ファイルの処理
+        importedNotes = await parseMimiNoteBackup(file);
+      } else {
+        throw new Error("サポートされていないバックアップファイル形式です。");
       }
-    };
-    reader.readAsText(file);
-  };
+      // --- ここまでが新しいロジック ---
 
+      if (importedNotes.length === 0) {
+        setNotes([]);
+        setToastMessage("空のバックアップファイルを復元しました。");
+      } else {
+        setNotes(importedNotes);
+        setToastMessage(`${importedNotes.length}件のメモを復元しました。`);
+      }
+
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
+    } catch (error) {
+      const detail = error instanceof Error ? `: ${error.message}` : "";
+      const errorMessage = `復元に失敗しました${detail}`;
+      setToastMessage(errorMessage);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToastMessage(""), 4000);
+      console.error("Failed to restore notes:", error);
+    }
+  };
   const handleShare = async () => {
     if (!activeNote) return;
 
@@ -1413,18 +1464,16 @@ export default function App() {
     },
     [isSelectionMode]
   );
-
   const confirmBulkDelete = () => {
     const idsToDelete = Array.from(selectedNoteIds);
     setNotes((notes) => notes.filter((note) => !idsToDelete.includes(note.id)));
-    idsToDelete.forEach((id) => unpinFromNotification(id, false)); // Also unpin without toast
+    idsToDelete.forEach((id) => unpinFromNotification(String(id), false)); // ← ← ここ！
     setShowBulkDeleteConfirm(false);
     exitSelectionMode();
     setToastMessage(`${idsToDelete.length}件のメモを削除しました。`);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
   };
-
   const handleBulkPin = () => {
     const shouldPin = notes.some(
       (note) => selectedNoteIds.has(note.id) && !note.isPinned
@@ -2038,7 +2087,7 @@ export default function App() {
                         type="file"
                         ref={fileInputRef}
                         onChange={handleRestore}
-                        accept=".json"
+                        accept=".json,.mimibk"
                         className="hidden"
                       />
                       <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
