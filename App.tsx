@@ -1690,7 +1690,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Bottom Row: Styles, Mic, Colors */}
+            {/* Bottom Row: Styles, Colors */}
             <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
               <div className="flex items-center">
                 <button
@@ -1720,17 +1720,6 @@ export default function App() {
                   aria-label="打ち消し線"
                 >
                   <StrikethroughIcon className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={handleVoiceInput}
-                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
-                    isListening
-                      ? "bg-rose-500/50 animate-pulse text-rose-50"
-                      : ""
-                  }`}
-                  aria-label="音声入力"
-                >
-                  <MicrophoneIcon className="w-5 h-5" />
                 </button>
               </div>
               <div className="flex items-center space-x-2">
@@ -1779,6 +1768,17 @@ export default function App() {
               data-placeholder="メモを入力..."
             />
           </main>
+
+          {/* フローティングマイクボタン */}
+          <button
+            onClick={handleVoiceInput}
+            className={`fixed bottom-8 right-6 z-10 w-16 h-16 rounded-full bg-rose-500 text-white shadow-xl flex items-center justify-center transform transition-all duration-300 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-offset-4 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 ${
+              isListening ? "animate-pulse ring-4 ring-rose-400" : ""
+            }`}
+            aria-label={isListening ? "音声入力を停止" : "音声入力"}
+          >
+            <MicrophoneIcon className="w-8 h-8" />
+          </button>
         </div>
       );
     }
