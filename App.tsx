@@ -1,4 +1,29 @@
 import initSqlJs from "sql.js";
+import { SqlJsStatic } from "sql.js";
+// 💡 修正点: SQL.js の初期化をアプリケーション全体で一度だけ行うためのPromiseを作成
+// initSqlJs は WebAssembly のロードと初期化を行う非同期関数です。
+const initSQL = async () => {
+  // locateFile のパスは、既にネットワークタブで確認済みのため、これでOK
+  const baseURL = import.meta.env.BASE_URL || "/";
+
+  return await initSqlJs({
+    locateFile: (file: string) => `${baseURL}${file}`,
+  });
+};
+
+let SQL: SqlJsStatic | null = null;
+let initPromise: Promise<SqlJsStatic> | null = null;
+
+// アプリケーション起動時に一度だけ初期化を開始
+initPromise = initSQL()
+  .then((s) => {
+    SQL = s;
+    return s;
+  })
+  .catch((err) => {
+    console.error("SQL.js の初期化に失敗しました。", err);
+    throw err;
+  });
 
 import React, {
   useState,
@@ -554,21 +579,20 @@ const DeleteConfirmationModal: React.FC<{
 // --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
-    // 💡 最終修正案: import.meta.env.BASE_URL を利用して、
-    // アプリがデプロイされているベースパスを確実に取得し、パスの起点を設定します。
-    // 例: Vercelでサブディレクトリにデプロイされていても正しく動作します。
-    const baseURL = import.meta.env.BASE_URL || "/"; // Vite環境でBASE_URLを取得
+    // 💡 修正点: initSqlJs を呼び出す代わりに、既にグローバルで初期化済みの SQL オブジェクトを待機/使用
+    let currentSQL = SQL;
 
-    const SQL = await initSqlJs({
-      locateFile: (file: string) => {
-        // file は通常 'sql-wasm.wasm'
-        // BASE_URL が '/memo/' なら、戻り値は '/memo/sql-wasm.wasm' となる。
-        return `${baseURL}${file}`;
-      },
-    });
+    if (!currentSQL && initPromise) {
+      // もし初期化が完了していない場合は待機する
+      currentSQL = await initPromise;
+    } else if (!currentSQL) {
+      // 万が一、initPromiseがない場合は、エラーとする
+      throw new Error("SQL.js の初期化プロミスが見つかりません。");
+    }
 
     const buffer = await file.arrayBuffer();
-    const db = new SQL.Database(new Uint8Array(buffer));
+    // ここで currentSQL を使用します
+    const db = new currentSQL.Database(new Uint8Array(buffer));
 
     // テーブル名を取得
     const tables = db.exec(
@@ -606,8 +630,8 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     });
 
     return notes;
-  } catch (error) {
-    console.error("ミミノートの解析中にエラー:", error);
+  } catch (U: any) {
+    console.error("ミミノートの解析中にエラー:", U);
     throw new Error("ミミノートのバックアップ解析に失敗しました。");
   }
 }
