@@ -555,9 +555,9 @@ const DeleteConfirmationModal: React.FC<{
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
     const SQL = await initSqlJs({
-      locateFile: () => "/sql-wasm.wasm", // ✅ publicフォルダに配置が必要
+      locateFile: (file: string) =>
+        `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/${file}`,
     });
-
     // SQLiteファイルをバイナリで読み込み
     const buffer = await file.arrayBuffer();
     const db = new SQL.Database(new Uint8Array(buffer));
