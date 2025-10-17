@@ -554,28 +554,27 @@ const DeleteConfirmationModal: React.FC<{
 // --- ここから追加 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
+    // ✅ ESM環境でのsql.js初期化対応
+    const initSqlJs = (await import("sql.js")).default;
     const SQL = await initSqlJs({
-      locateFile: (file: string) =>
-        `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/${file}`,
+      locateFile: () => "/sql-wasm.wasm", // public配下のwasmを利用
     });
-    // SQLiteファイルをバイナリで読み込み
+
     const buffer = await file.arrayBuffer();
     const db = new SQL.Database(new Uint8Array(buffer));
 
-    // テーブル名を自動取得（mimi_notes / notes など）
+    // テーブル名を取得
     const tables = db.exec(
       "SELECT name FROM sqlite_master WHERE type='table';"
     );
     const tableName = tables[0]?.values?.[0]?.[0] || "mimi_notes";
 
-    // テーブルからすべての行を取得
     const result = db.exec(`SELECT * FROM ${tableName}`);
     if (!result.length) throw new Error("バックアップデータが空です。");
 
     const rows = result[0].values;
     const columns = result[0].columns;
 
-    // カラム名をキーにしてオブジェクト化
     const notes: Note[] = rows.map((row: any[]) => {
       const obj: any = {};
       columns.forEach((col, i) => (obj[col] = row[i]));
