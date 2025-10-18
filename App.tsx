@@ -8,7 +8,7 @@ import React, {
 } from "react";
 
 // -----------------------------------------------------------
-// 💡 SQL.jsのWASMファイルを堅牢に初期化する新ロジック
+// 💡 SQL.jsのWASMファイルを直接フェッチする堅牢な初期化ロジック
 // -----------------------------------------------------------
 let sqlJsInstance: any = null;
 let sqlJsInitializationPromise: Promise<any> | null = null;
@@ -19,54 +19,26 @@ const ensureSqlJs = () => {
 
   sqlJsInitializationPromise = (async () => {
     try {
-      // ユーザー様の分析に基づき、WASMファイルをCDNから明示的に読み込むことで初期化を安定させる
-      const SQL = await initSqlJs({
-        locateFile: (file: string) =>
-          `https://aistudiocdn.com/sql.js@^1.13.0/${file}`,
+      const wasmURL =
+        "https://aistudiocdn.com/sql.js@1.13.0/dist/sql-wasm.wasm";
+      const wasmBinary = await fetch(wasmURL).then((res) => {
+        if (!res.ok)
+          throw new Error(`WASMファイルのダウンロードに失敗: ${res.status}`);
+        return res.arrayBuffer();
       });
-
+      const SQL = await initSqlJs({ wasmBinary });
       if (!SQL || typeof SQL.Database !== "function") {
-        throw new Error(
-          "SQL.jsの初期化に成功しましたが、無効なモジュールが返されました。"
-        );
+        throw new Error("SQL.js did not initialize correctly.");
       }
-
-      // Pre-flight check: Test if the DB can be created to ensure WASM is working
-      try {
-        const testDb = new SQL.Database();
-        testDb.close();
-      } catch (e) {
-        console.error("[SQL.js] Pre-flight check failed:", e);
-        throw new Error(
-          "データベースエンジンがこのブラウザ環境で動作しません。"
-        );
-      }
-
       sqlJsInstance = SQL;
-      sqlJsInitializationPromise = null; // 成功したのでプロミスをクリア
+      sqlJsInitializationPromise = null;
       return SQL;
-    } catch (err: any) {
+    } catch (err) {
       console.error("[SQL.js] 初期化失敗:", err);
-      sqlJsInitializationPromise = null; // 失敗したのでプロミスをクリア
-
-      let detailedMessage = "不明なエラーが発生しました。";
-      if (err instanceof Error) {
-        detailedMessage = err.message;
-        if (
-          detailedMessage.toLowerCase().includes("failed to fetch") ||
-          detailedMessage.toLowerCase().includes("cors")
-        ) {
-          detailedMessage =
-            "WASMモジュールの読み込みに失敗しました。ネットワーク接続を確認してください。";
-        }
-      }
-
-      throw new Error(
-        `データベースエンジンの初期化に失敗しました: ${detailedMessage}`
-      );
+      sqlJsInitializationPromise = null;
+      throw err;
     }
   })();
-
   return sqlJsInitializationPromise;
 };
 
@@ -82,12 +54,47 @@ type Note = {
   fontSize: string;
 };
 
-type ViewMode = "list" | "calendar";
-
 type DeleteConfirmation = {
   ids: string[];
   preview?: string;
 };
+
+// --- Custom Event Types for better type safety ---
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: Array<string>;
+  readonly userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionResultList {
+  [index: number]: SpeechRecognitionResult;
+  length: number;
+  item(index: number): SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  [index: number]: SpeechRecognitionAlternative;
+  length: number;
+  item(index: number): SpeechRecognitionAlternative;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
 
 // --- Helper Functions ---
 const parseBackupDate = (dateInput: any): number | null => {
@@ -431,124 +438,112 @@ const FONT_SIZE_COMMAND_MAP: { [key: string]: string } = {
 };
 
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
-  let db: any;
   try {
     const SQL = await ensureSqlJs();
-    const fileBuffer = new Uint8Array(await file.arrayBuffer());
+    const db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
 
-    const SQLITE_HEADER = "SQLite format 3\0";
-    let dbBuffer = fileBuffer;
-    let headerIndex = -1;
-    const headerBytes = new TextEncoder().encode(SQLITE_HEADER);
-    const searchLimit = Math.min(4096, fileBuffer.length - headerBytes.length);
+    // 1. Get all non-system table names
+    const tablesResult = db.exec(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
+    );
+    if (!tablesResult.length || !tablesResult[0].values.length) {
+      db.close();
+      throw new Error(
+        "バックアップファイル内にメモのテーブルが見つかりませんでした。"
+      );
+    }
+    const tableNames = tablesResult[0].values.flat() as string[];
 
-    for (let i = 0; i <= searchLimit; i++) {
-      let found = true;
-      for (let j = 0; j < headerBytes.length; j++) {
-        if (fileBuffer[i + j] !== headerBytes[j]) {
-          found = false;
-          break;
+    let bestTable: { name: string; mappings: any } | null = null;
+
+    // 2. Find the best table by inspecting its columns and create dynamic mappings
+    for (const tableName of tableNames) {
+      try {
+        const tableInfoResult = db.exec(`PRAGMA table_info("${tableName}")`);
+        if (tableInfoResult.length > 0) {
+          const columns = tableInfoResult[0].values.map((row) =>
+            (row[1] as string).toLowerCase()
+          );
+
+          const mappings = {
+            id: columns.find((c) => c === "_id" || c === "id"),
+            content: columns.find(
+              (c) => c === "text" || c === "content" || c === "note"
+            ),
+            createdAt: columns.find(
+              (c) =>
+                c === "creation_date" || c === "created_at" || c === "created"
+            ),
+            updatedAt: columns.find(
+              (c) =>
+                c === "update_date" || c === "updated_at" || c === "modified"
+            ),
+            isPinned: columns.find(
+              (c) => c === "ear" || c === "pinned" || c === "is_pinned"
+            ),
+          };
+
+          // A valid table must have a content column and at least one date column.
+          if (mappings.content && (mappings.createdAt || mappings.updatedAt)) {
+            bestTable = { name: tableName, mappings };
+            break; // Found a suitable table, stop searching.
+          }
         }
+      } catch (e) {
+        console.warn(`Could not inspect table "${tableName}":`, e);
       }
-      if (found) {
-        headerIndex = i;
-        break;
-      }
-    }
-    if (headerIndex > 0) {
-      dbBuffer = fileBuffer.slice(headerIndex);
     }
 
-    try {
-      db = new SQL.Database(dbBuffer);
-    } catch (e: any) {
-      console.error("ユーザーのデータベースファイルの読み込みに失敗:", e);
-      if (headerIndex === -1) {
-        throw new Error(
-          "ファイル内に有効なSQLiteヘッダーが見つかりませんでした。"
-        );
-      }
-      const reason =
-        e.message || (typeof e === "object" ? JSON.stringify(e) : String(e));
+    if (!bestTable) {
+      db.close();
       throw new Error(
-        `データベースファイルの読み込みに失敗しました。(詳細: ${reason})`
+        "バックアップファイルから有効なメモデータを特定できませんでした。"
       );
     }
 
-    const tableName = "NOTE_TB";
-    let tableExists = false;
-    try {
-      const tablesResult = db.exec(
-        `SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`
-      );
-      tableExists =
-        tablesResult.length > 0 && tablesResult[0].values.length > 0;
-    } catch (e) {
-      throw new Error("データベース内のテーブル一覧の取得に失敗しました。");
-    }
+    const { name: notesTableName, mappings } = bestTable;
 
-    if (!tableExists) {
-      throw new Error(
-        `バックアップファイル内に必須のテーブル'${tableName}'が見つかりませんでした。`
-      );
-    }
+    // 3. Proceed with the identified table
+    const result = db.exec(`SELECT * FROM "${notesTableName}"`);
+    db.close();
 
-    let result;
-    try {
-      result = db.exec(
-        `SELECT _id, text, creation_date, update_date, ear FROM "${tableName}"`
+    if (!result.length) return [];
+
+    // 4. Map rows to Note objects using the dynamic mappings
+    return result[0].values.map((row: any[]) => {
+      const obj: any = {};
+      result[0].columns.forEach((col, i) => (obj[col.toLowerCase()] = row[i]));
+
+      const createdAt = parseBackupDate(
+        mappings.createdAt ? obj[mappings.createdAt] : null
       );
-    } catch (e) {
-      throw Object.assign(
-        new Error(
-          `テーブル "${tableName}" からのデータ読み取りに失敗しました。`
+      const updatedAt = parseBackupDate(
+        mappings.updatedAt ? obj[mappings.updatedAt] : null
+      );
+      const finalCreatedAt = createdAt || updatedAt || Date.now();
+
+      return {
+        id: String(
+          mappings.id && obj[mappings.id]
+            ? obj[mappings.id]
+            : finalCreatedAt + Math.random()
         ),
-        { cause: e }
-      );
-    }
-
-    if (!result.length || !result[0].values.length) return [];
-
-    try {
-      const columns = result[0].columns;
-      return result[0].values.map((row: any[]) => {
-        const noteData: { [key: string]: any } = {};
-        columns.forEach((col, i) => (noteData[col] = row[i]));
-        const createdAt = parseBackupDate(noteData.creation_date);
-        const updatedAt = parseBackupDate(noteData.update_date);
-        const finalCreatedAt = createdAt || updatedAt || Date.now();
-        return {
-          id: String(noteData._id || finalCreatedAt + Math.random()),
-          content: String(noteData.text || "").replace(/\n/g, "<br>"),
-          createdAt: finalCreatedAt,
-          updatedAt: updatedAt || finalCreatedAt,
-          isPinned: Boolean(noteData.ear === 1),
-          color: "text-slate-800 dark:text-slate-200",
-          font: "font-sans",
-          fontSize: "text-lg",
-        };
-      });
-    } catch (e) {
-      throw Object.assign(
-        new Error("メモデータのフォーマット変換中にエラーが発生しました。"),
-        { cause: e }
-      );
-    }
+        content: String(
+          (mappings.content ? obj[mappings.content] : "") || ""
+        ).replace(/\n/g, "<br>"),
+        createdAt: finalCreatedAt,
+        updatedAt: updatedAt || finalCreatedAt,
+        isPinned: Boolean(
+          mappings.isPinned ? obj[mappings.isPinned] === 1 : false
+        ),
+        color: "text-slate-800 dark:text-slate-200",
+        font: "font-sans",
+        fontSize: "text-lg",
+      };
+    });
   } catch (err: any) {
     console.error("ミミノートの解析中にエラー:", err);
-    throw new Error(
-      `バックアップファイルの解析に失敗しました: ${
-        err.message || "不明なエラーが発生しました。"
-      }`
-    );
-  } finally {
-    if (db) {
-      try {
-        db.close();
-      } catch (e) {
-        console.error("データベースのクローズに失敗:", e);
-      }
-    }
+    throw new Error(`バックアップファイルの解析に失敗しました: ${err.message}`);
   }
 }
 
@@ -789,7 +784,8 @@ export default function App() {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<File | null>(
     null
   );
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
   const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<
     Set<string>
   >(new Set());
@@ -873,7 +869,7 @@ export default function App() {
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setInstallPrompt(e);
+      setInstallPrompt(e as BeforeInstallPromptEvent);
     };
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     return () =>
@@ -891,6 +887,22 @@ export default function App() {
       setActiveNoteId(noteId);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+  }, [notes]);
+
+  // ✅ BUG FIX: Handle messages from service worker (e.g., notification clicks)
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data?.type === "OPEN_NOTE" && event.data.noteId) {
+        if (notes.some((note) => note.id === event.data.noteId)) {
+          setActiveNoteId(event.data.noteId);
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handleSWMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener("message", handleSWMessage);
+    };
   }, [notes]);
 
   const showToast = useCallback((message: string, duration: number = 3000) => {
@@ -913,16 +925,16 @@ export default function App() {
       recognition.lang = "ja-JP";
       recognition.onstart = () => setIsListening(true);
       recognition.onend = () => setIsListening(false);
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error("Speech recognition error", event.error);
         if (event.error === "not-allowed")
           showToast("マイクの使用が許可されていません");
         setIsListening(false);
       };
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
         const finalTranscript = Array.from(event.results)
           .slice(event.resultIndex)
-          .map((result: any) => result[0].transcript)
+          .map((result) => result[0].transcript)
           .join("");
 
         if (finalTranscript && activeNoteRef.current) {
@@ -947,22 +959,23 @@ export default function App() {
     }
   }, [isListening, showToast, updateNote]);
 
+  // ✅ OPTIMIZATION: More efficient sorting and filtering logic.
   const filteredNotes = useMemo(() => {
-    const sortedByDate = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
-    const applySearchFilter = (arr: Note[]) =>
-      searchTerm
-        ? arr.filter((n) =>
-            getPlainText(n.content)
-              .toLowerCase()
-              .includes(searchTerm.toLowerCase())
-          )
-        : arr;
-    if (sortByPin) {
-      const pinned = sortedByDate.filter((n) => n.isPinned);
-      const unpinned = sortedByDate.filter((n) => !n.isPinned);
-      return [...applySearchFilter(pinned), ...applySearchFilter(unpinned)];
+    const sortedNotes = [...notes].sort((a, b) => {
+      if (sortByPin) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+      }
+      return b.updatedAt - a.updatedAt;
+    });
+
+    if (!searchTerm) {
+      return sortedNotes;
     }
-    return applySearchFilter(sortedByDate);
+
+    return sortedNotes.filter((n) =>
+      getPlainText(n.content).toLowerCase().includes(searchTerm.toLowerCase())
+    );
   }, [notes, searchTerm, sortByPin]);
 
   const handleCreateNote = useCallback(
@@ -1238,7 +1251,7 @@ type NoteListProps = {
   setShowSearchBar: React.Dispatch<React.SetStateAction<boolean>>;
   showSettings: boolean;
   setShowSettings: React.Dispatch<React.SetStateAction<boolean>>;
-  installPrompt: any;
+  installPrompt: BeforeInstallPromptEvent | null;
   handleBackup: () => void;
   handleRestore: (event: React.ChangeEvent<HTMLInputElement>) => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
@@ -1537,7 +1550,6 @@ const NoteList = React.memo<NoteListProps>(
         <main className="flex-grow p-4 overflow-y-auto">
           {notes.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {/* Fix: `filteredNotes` is not defined in this scope. Use `notes` prop which contains the filtered notes. */}
               {notes.map((note: Note) => (
                 <NoteItem
                   key={note.id}
@@ -1645,23 +1657,27 @@ const NoteEditor = React.memo<NoteEditorProps>(
         document.removeEventListener("selectionchange", saveSelection);
     }, [saveSelection]);
 
+    // ✅ OPTIMIZATION: More robust effect handling for contentEditable.
+    // This prevents potential loops and separates concerns for better readability.
     useEffect(() => {
-      if (editorRef.current && editorRef.current.innerHTML !== note.content) {
+      if (editorRef.current) {
         editorRef.current.innerHTML = note.content;
       }
+      // Only run when switching to a different note.
+    }, [note.id]);
+
+    useEffect(() => {
       if (startVoiceOnMount && editorRef.current) {
         editorRef.current.focus();
         onVoiceInput();
         setStartVoiceOnMount(false);
       }
+    }, [startVoiceOnMount, onVoiceInput, setStartVoiceOnMount]);
+
+    useEffect(() => {
+      // This only needs to be set once.
       document.execCommand("styleWithCSS", false, "true");
-    }, [
-      note.id,
-      startVoiceOnMount,
-      onVoiceInput,
-      setStartVoiceOnMount,
-      note.content,
-    ]);
+    }, []);
 
     const applyStyle = useCallback(
       (command: string, value?: string) => {
