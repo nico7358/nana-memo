@@ -64,6 +64,54 @@ const ensureSqlJs = () => {
   return sqlJsInitializationPromise;
 };
 
+// -----------------------------------------------------------
+// 💡 日付パース用のヘルパー関数を追加
+// -----------------------------------------------------------
+/**
+ * バックアップファイル内の様々な形式の日付データをパースして、
+ * Unixタイムスタンプ（ミリ秒）に変換する堅牢な関数。
+ * @param dateInput - データベースから取得した日付データ (数値、文字列、nullなど)
+ * @returns パースされたタイムスタンプ（ミリ秒）、または失敗した場合はnull
+ */
+const parseBackupDate = (dateInput: any): number | null => {
+  if (dateInput === null || dateInput === undefined || dateInput === "") {
+    return null;
+  }
+
+  // 1. 数値の場合 (Unixタイムスタンプの可能性)
+  if (typeof dateInput === "number") {
+    // 桁数で秒かミリ秒かを判定 (簡易的だが効果的)
+    // 10桁 -> 秒、 13桁 -> ミリ秒
+    if (String(dateInput).length === 10) {
+      return dateInput * 1000; // 秒をミリ秒に変換
+    }
+    return dateInput; // ミリ秒と仮定
+  }
+
+  // 2. 文字列の場合
+  if (typeof dateInput === "string") {
+    let timestamp = NaN;
+
+    // 'YYYY-MM-DD HH:MM:SS' のような一般的な形式に対応するため、スペースを'T'に置換
+    // これにより、ほとんどのJavaScriptエンジンでISO 8601形式として解釈されやすくなる
+    if (dateInput.includes(" ") && dateInput.includes(":")) {
+      const isoLikeString = dateInput.replace(" ", "T");
+      timestamp = new Date(isoLikeString).getTime();
+    }
+
+    // 上記でパースできない場合、または別の形式（例: 'YYYY/MM/DD'）の場合、
+    // Dateコンストラクタに直接渡してパースを試みる
+    if (isNaN(timestamp)) {
+      timestamp = new Date(dateInput).getTime();
+    }
+
+    return isNaN(timestamp) ? null : timestamp;
+  }
+
+  // 数値でも文字列でもない場合はパース不可
+  return null;
+};
+
 import React, {
   useState,
   useEffect,
@@ -668,16 +716,13 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       const obj: any = {};
       columns.forEach((col, i) => (obj[col] = row[i]));
 
-      // 💡 修正 1: 日付処理を堅牢にする
-      const createdAtTimestamp = new Date(obj.creation_date).getTime();
-      const createdAt = !isNaN(createdAtTimestamp)
-        ? createdAtTimestamp
-        : Date.now();
+      // 💡 修正: 新しい日付パース関数を使用して、元の日時を正確に復元
+      const parsedCreatedAt = parseBackupDate(obj.creation_date);
+      const parsedUpdatedAt = parseBackupDate(obj.update_date);
 
-      const updatedAtTimestamp = new Date(obj.update_date).getTime();
-      const updatedAt = !isNaN(updatedAtTimestamp)
-        ? updatedAtTimestamp
-        : createdAt;
+      // パースに成功した場合はその値を使い、失敗した場合はフォールバック
+      const createdAt = parsedCreatedAt !== null ? parsedCreatedAt : Date.now();
+      const updatedAt = parsedUpdatedAt !== null ? parsedUpdatedAt : createdAt;
 
       // 💡 修正 2: 改行コードを<br>に変換
       const plainText = String(obj.text || "");
