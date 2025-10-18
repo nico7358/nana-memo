@@ -127,7 +127,7 @@ self.addEventListener("message", (event) => {
     const { title, body, noteId } = event.data.payload;
     self.registration.showNotification(title, {
       body,
-      icon: "/icon-badge.png",
+      icon: "/icon-192.png",
       tag: `note-${noteId}`,
       requireInteraction: true,
       data: { noteId },
