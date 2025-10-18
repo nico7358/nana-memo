@@ -407,11 +407,29 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
     const SQL = await ensureSqlJs();
     const fileBuffer = new Uint8Array(await file.arrayBuffer());
-    db = new SQL.Database(fileBuffer);
 
-    const tablesResult = db.exec(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
-    );
+    try {
+      db = new SQL.Database(fileBuffer);
+    } catch (e) {
+      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
+      throw Object.assign(new Error("データベースの読み込みに失敗しました。"), {
+        cause: e,
+      });
+    }
+
+    let tablesResult;
+    try {
+      tablesResult = db.exec(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
+      );
+    } catch (e) {
+      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
+      throw Object.assign(
+        new Error("データベース内のテーブル一覧の取得に失敗しました。"),
+        { cause: e }
+      );
+    }
+
     if (!tablesResult.length || !tablesResult[0].values.length) {
       throw new Error(
         "バックアップファイル内にメモのテーブルが見つかりませんでした。"
@@ -420,7 +438,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     const tableNames = tablesResult[0].values.flat() as string[];
 
     let bestTable: { name: string; mappings: any } | null = null;
-
     for (const tableName of tableNames) {
       try {
         const tableInfoResult = db.exec(`PRAGMA table_info("${tableName}")`);
@@ -428,7 +445,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
           const columns = tableInfoResult[0].values.map((row) =>
             (row[1] as string).toLowerCase()
           );
-
           const mappings = {
             id: columns.find((c) => c === "_id" || c === "id"),
             content: columns.find(
@@ -446,14 +462,16 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
               (c) => c === "ear" || c === "pinned" || c === "is_pinned"
             ),
           };
-
           if (mappings.content && (mappings.createdAt || mappings.updatedAt)) {
             bestTable = { name: tableName, mappings };
             break;
           }
         }
       } catch (e) {
-        console.warn(`テーブル "${tableName}" の検査に失敗:`, e);
+        console.warn(
+          `テーブル "${tableName}" のスキーマ検査に失敗、スキップします:`,
+          e
+        );
       }
     }
 
@@ -464,63 +482,94 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     }
 
     const { name: notesTableName, mappings } = bestTable;
-    const result = db.exec(`SELECT * FROM "${notesTableName}"`);
+
+    let result;
+    try {
+      result = db.exec(`SELECT * FROM "${notesTableName}"`);
+    } catch (e) {
+      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
+      throw Object.assign(
+        new Error(
+          `テーブル "${notesTableName}" からのデータ読み取りに失敗しました。`
+        ),
+        { cause: e }
+      );
+    }
+
     if (!result.length) return [];
 
-    return result[0].values.map((row: any[]) => {
-      const obj: any = {};
-      result[0].columns.forEach((col, i) => (obj[col.toLowerCase()] = row[i]));
-
-      const createdAt = parseBackupDate(
-        mappings.createdAt ? obj[mappings.createdAt] : null
+    try {
+      return result[0].values.map((row: any[]) => {
+        const obj: any = {};
+        result[0].columns.forEach(
+          (col, i) => (obj[col.toLowerCase()] = row[i])
+        );
+        const createdAt = parseBackupDate(
+          mappings.createdAt ? obj[mappings.createdAt] : null
+        );
+        const updatedAt = parseBackupDate(
+          mappings.updatedAt ? obj[mappings.updatedAt] : null
+        );
+        const finalCreatedAt = createdAt || updatedAt || Date.now();
+        return {
+          id: String(
+            mappings.id && obj[mappings.id]
+              ? obj[mappings.id]
+              : finalCreatedAt + Math.random()
+          ),
+          content: String(
+            (mappings.content ? obj[mappings.content] : "") || ""
+          ).replace(/\n/g, "<br>"),
+          createdAt: finalCreatedAt,
+          updatedAt: updatedAt || finalCreatedAt,
+          isPinned: Boolean(
+            mappings.isPinned ? obj[mappings.isPinned] === 1 : false
+          ),
+          color: "text-slate-800 dark:text-slate-200",
+          font: "font-sans",
+          fontSize: "text-lg",
+        };
+      });
+    } catch (e) {
+      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
+      throw Object.assign(
+        new Error("メモデータのフォーマット変換中にエラーが発生しました。"),
+        { cause: e }
       );
-      const updatedAt = parseBackupDate(
-        mappings.updatedAt ? obj[mappings.updatedAt] : null
-      );
-      const finalCreatedAt = createdAt || updatedAt || Date.now();
-
-      return {
-        id: String(
-          mappings.id && obj[mappings.id]
-            ? obj[mappings.id]
-            : finalCreatedAt + Math.random()
-        ),
-        content: String(
-          (mappings.content ? obj[mappings.content] : "") || ""
-        ).replace(/\n/g, "<br>"),
-        createdAt: finalCreatedAt,
-        updatedAt: updatedAt || finalCreatedAt,
-        isPinned: Boolean(
-          mappings.isPinned ? obj[mappings.isPinned] === 1 : false
-        ),
-        color: "text-slate-800 dark:text-slate-200",
-        font: "font-sans",
-        fontSize: "text-lg",
-      };
-    });
+    }
   } catch (err: any) {
     console.error("ミミノートの解析中に詳細エラー:", err);
-    let errorMessage =
-      "不明なエラーが発生しました。ファイルが破損しているか、サポートされていない形式の可能性があります。";
-    if (err instanceof Error) {
-      errorMessage = err.message;
-    } else if (typeof err === "string") {
-      errorMessage = err;
-    } else if (err && typeof err.message === "string") {
-      errorMessage = err.message;
-    } else {
-      try {
-        const errString = JSON.stringify(err);
-        if (errString !== "{}") errorMessage = errString;
-      } catch (e) {
-        /* JSON.stringify failed */
+
+    let finalMessage = err.message || "不明なエラーが発生しました。";
+    let causeMessage = "";
+
+    let causeError = err.cause;
+    if (causeError) {
+      if (causeError instanceof Error) {
+        causeMessage = causeError.message;
+      } else if (typeof causeError === "string") {
+        causeMessage = causeError;
+      } else if (causeError && typeof causeError.message === "string") {
+        causeMessage = causeError.message;
+      } else {
+        try {
+          const causeString = JSON.stringify(causeError);
+          if (causeString !== "{}") causeMessage = causeString;
+        } catch (e) {
+          /* ignore */
+        }
       }
     }
-    if (errorMessage.includes("file is not a database")) {
-      errorMessage = "ファイルが有効なデータベース形式ではありません。";
+
+    const combinedMessage = causeMessage || finalMessage;
+    if (combinedMessage.toLowerCase().includes("file is not a database")) {
+      finalMessage = "ファイルが有効なデータベース形式ではありません。";
+    } else if (causeMessage && causeMessage !== finalMessage) {
+      finalMessage = `${finalMessage} (原因: ${causeMessage})`;
     }
+
     throw new Error(
-      `バックアップファイルの解析に失敗しました: ${errorMessage}`
+      `バックアップファイルの解析に失敗しました: ${finalMessage}`
     );
   } finally {
     if (db) {
