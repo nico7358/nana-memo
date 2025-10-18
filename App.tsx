@@ -407,7 +407,7 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     const SQL = await ensureSqlJs();
     const db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
 
-    // テーブル名を堅牢に検出
+    // 1. Get all non-system table names
     const tablesResult = db.exec(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
     );
@@ -418,26 +418,45 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       );
     }
     const tableNames = tablesResult[0].values.flat() as string[];
-    let tableName = tableNames.find(
-      (name) => name.toLowerCase() === "mimi_notes"
-    );
-    if (!tableName)
-      tableName = tableNames.find((name) =>
-        name.toLowerCase().includes("note")
-      );
-    if (!tableName) tableName = tableNames[0];
-    if (!tableName) {
+
+    // 2. Find the correct table by inspecting its columns for 'text' and a date column
+    let notesTableName: string | null = null;
+    for (const tableName of tableNames) {
+      try {
+        const tableInfoResult = db.exec(`PRAGMA table_info("${tableName}")`);
+        if (tableInfoResult.length > 0) {
+          const columns = tableInfoResult[0].values.map((row) =>
+            (row[1] as string).toLowerCase()
+          );
+          if (
+            columns.includes("text") &&
+            (columns.includes("creation_date") ||
+              columns.includes("update_date"))
+          ) {
+            notesTableName = tableName;
+            break;
+          }
+        }
+      } catch (e) {
+        // Ignore tables that can't be introspected
+        console.warn(`Could not inspect table "${tableName}":`, e);
+      }
+    }
+
+    if (!notesTableName) {
       db.close();
       throw new Error(
         "バックアップファイルから有効なメモテーブルを特定できませんでした。"
       );
     }
 
-    const result = db.exec(`SELECT * FROM "${tableName}"`);
+    // 3. Proceed with the identified table
+    const result = db.exec(`SELECT * FROM "${notesTableName}"`);
     db.close();
 
     if (!result.length) return [];
 
+    // 4. Map rows to Note objects
     return result[0].values.map((row: any[]) => {
       const obj: any = {};
       result[0].columns.forEach((col, i) => (obj[col] = row[i]));
@@ -996,12 +1015,24 @@ export default function App() {
           throw new Error("サポートされていないファイル形式です。");
         }
 
-        setNotes(importedNotes);
-        showToast(
-          importedNotes.length > 0
-            ? `${importedNotes.length}件のメモを復元しました。`
-            : "空のバックアップを復元しました。"
-        );
+        setNotes((currentNotes) => {
+          const notesMap = new Map<string, Note>();
+          for (const note of currentNotes) {
+            notesMap.set(note.id, note);
+          }
+          for (const importedNote of importedNotes) {
+            const existingNote = notesMap.get(importedNote.id);
+            if (
+              !existingNote ||
+              importedNote.updatedAt >= existingNote.updatedAt
+            ) {
+              notesMap.set(importedNote.id, importedNote);
+            }
+          }
+          return Array.from(notesMap.values());
+        });
+
+        showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
       } catch (error: any) {
         showToast(`復元に失敗しました: ${error.message}`, 4000);
         console.error("Failed to restore notes:", error);
@@ -1095,9 +1126,9 @@ export default function App() {
               バックアップから復元しますか？
               <br />
               <strong className="text-rose-500 dark:text-rose-400">
-                現在のメモはすべて削除され、バックアップの内容に置き換わります。
+                既存のメモは保持され、バックアップのメモが追加されます。
               </strong>
-              この操作は元に戻せません。
+              同じメモがある場合は、更新日時が新しい方で上書きされます。
             </p>
             <div className="flex justify-end space-x-3">
               <button
