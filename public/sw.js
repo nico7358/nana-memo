@@ -128,7 +128,6 @@ self.addEventListener("message", (event) => {
     self.registration.showNotification(title, {
       body,
       icon: "/icon-192.png",
-      badge: "/icon-192.png",
       tag: `note-${noteId}`,
       requireInteraction: true,
       data: { noteId },
