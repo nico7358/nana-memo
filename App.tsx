@@ -620,18 +620,15 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
     console.log("[MimiNote] バックアップ解析開始");
 
-    // 💡 修正: 改善された初期化関数を呼び出す
     const SQL = await ensureSqlJs();
     console.log("[MimiNote] SQL.js初期化完了");
 
     const buffer = await file.arrayBuffer();
     console.log(`[MimiNote] ファイル読み込み完了: ${buffer.byteLength} bytes`);
 
-    // データベースインスタンスの作成
     const db = new SQL.Database(new Uint8Array(buffer));
     console.log("[MimiNote] データベース作成成功");
 
-    // テーブル名を取得
     const tables = db.exec(
       "SELECT name FROM sqlite_master WHERE type='table';"
     );
@@ -640,7 +637,12 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     console.log(`[MimiNote] 使用するテーブル名: ${tableName}`);
 
     const result = db.exec(`SELECT * FROM ${tableName}`);
-    if (!result.length) throw new Error("バックアップデータが空です。");
+    // 💡 修正: データが0件の場合も考慮
+    if (!result.length || result[0].values.length === 0) {
+      console.log("[MimiNote] バックアップデータが空です。");
+      db.close();
+      return [];
+    }
     console.log(`[MimiNote] ${result[0].values.length}件のノートを取得`);
 
     const rows = result[0].values;
@@ -651,16 +653,24 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       const obj: any = {};
       columns.forEach((col, i) => (obj[col] = row[i]));
 
-      const createdAt = obj.creation_date
-        ? new Date(obj.creation_date).getTime()
+      // 💡 修正 1: 日付処理を堅牢にする
+      const createdAtTimestamp = new Date(obj.creation_date).getTime();
+      const createdAt = !isNaN(createdAtTimestamp)
+        ? createdAtTimestamp
         : Date.now();
-      const updatedAt = obj.update_date
-        ? new Date(obj.update_date).getTime()
+
+      const updatedAtTimestamp = new Date(obj.update_date).getTime();
+      const updatedAt = !isNaN(updatedAtTimestamp)
+        ? updatedAtTimestamp
         : createdAt;
 
+      // 💡 修正 2: 改行コードを<br>に変換
+      const plainText = String(obj.text || "");
+      const contentAsHtml = plainText.replace(/\n/g, "<br>");
+
       return {
-        id: String(obj._id || createdAt),
-        content: String(obj.text || ""),
+        id: String(obj._id || createdAt + Math.random()), // IDの衝突を避ける
+        content: contentAsHtml,
         createdAt,
         updatedAt,
         isPinned: Boolean(obj.ear === 1),
@@ -675,9 +685,8 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     return notes;
   } catch (err: any) {
     console.error("ミミノートの解析中にエラー:", err);
-    // より具体的なエラーメッセージを投げる
     if (err.message.includes("SQL.js")) {
-      throw err; // ensureSqlJsからのエラーをそのまま投げる
+      throw err;
     }
     throw new Error(
       `バックアップファイルの解析に失敗しました。ファイル形式が不正か、破損している可能性があります。`
