@@ -1,22 +1,32 @@
 // App.tsx のファイル先頭付近
-import initSqlJs, { SqlJsStatic } from "sql.js"; // SqlJsStatic もインポート
+import initSqlJs from "sql.js";
 
 // -----------------------------------------------------------
-// 💡 ステップ1: SQL.js の初期化をアプリケーション全体で一度だけ行う
-const initSQL = async () => {
-  // locateFile のパスは、ネットワーク確認結果に基づいて最も安定した方法を採用
-  const baseURL = import.meta.env.BASE_URL || "/";
-  return await initSqlJs({
-    locateFile: (file: string) => `${baseURL}${file}`,
-  });
-};
+// 💡 新戦略: 遅延初期化 - ファイルアップロード時に初めてSQL.jsを初期化
+// トップレベルでの初期化を避け、必要な時だけ初期化する
+let sqlJsInstance: any = null;
 
-// 初期化の結果を保持する Promise を作成し、一度だけ実行
-// この initPromise を await することで、初期化完了を確実に待てるようにします
-const initPromise: Promise<SqlJsStatic> = initSQL().catch((err) => {
-  console.error("[SQL Init] Failed to initialize SQL.js:", err);
-  throw err;
-});
+const ensureSqlJs = async () => {
+  if (sqlJsInstance) return sqlJsInstance;
+  
+  console.log("[SQL.js] 初期化を開始...");
+  const baseURL = import.meta.env.BASE_URL || "/";
+  
+  try {
+    sqlJsInstance = await initSqlJs({
+      locateFile: (file: string) => {
+        const url = `${baseURL}${file}`;
+        console.log(`[SQL.js] Loading: ${url}`);
+        return url;
+      },
+    });
+    console.log("[SQL.js] 初期化成功");
+    return sqlJsInstance;
+  } catch (err) {
+    console.error("[SQL.js] 初期化失敗:", err);
+    throw new Error(`SQL.jsの初期化に失敗しました: ${err}`);
+  }
+};
 
 import React, {
   useState,
@@ -572,24 +582,34 @@ const DeleteConfirmationModal: React.FC<{
 // --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
-    // 💡 修正点: SQL.jsの初期化完了を確実に待機
-    const SQL = await initPromise;
+    console.log("[MimiNote] バックアップ解析開始");
+    
+    // 💡 新戦略: 必要な時だけSQL.jsを初期化
+    const SQL = await ensureSqlJs();
+    console.log("[MimiNote] SQL.js初期化完了");
 
     const buffer = await file.arrayBuffer();
+    console.log(`[MimiNote] ファイル読み込み完了: ${buffer.byteLength} bytes`);
+    
     // データベースインスタンスの作成
     const db = new SQL.Database(new Uint8Array(buffer));
+    console.log("[MimiNote] データベース作成成功");
 
     // テーブル名を取得
     const tables = db.exec(
       "SELECT name FROM sqlite_master WHERE type='table';"
     );
+    console.log("[MimiNote] テーブル一覧:", tables);
     const tableName = tables[0]?.values?.[0]?.[0] || "mimi_notes";
+    console.log(`[MimiNote] 使用するテーブル名: ${tableName}`);
 
     const result = db.exec(`SELECT * FROM ${tableName}`);
     if (!result.length) throw new Error("バックアップデータが空です。");
+    console.log(`[MimiNote] ${result[0].values.length}件のノートを取得`);
 
     const rows = result[0].values;
     const columns = result[0].columns;
+    console.log("[MimiNote] カラム名:", columns);
 
     const notes: Note[] = rows.map((row: any[]) => {
       const obj: any = {};
@@ -614,6 +634,8 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       };
     });
 
+    console.log(`[MimiNote] ✅ ${notes.length}件のノートを正常に変換しました`);
+    db.close();
     return notes;
   } catch (U: any) {
     console.error("ミミノートの解析中にエラー:", U);
