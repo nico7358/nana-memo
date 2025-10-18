@@ -2,30 +2,42 @@
 import initSqlJs from "sql.js";
 
 // -----------------------------------------------------------
-// 💡 新戦略: 遅延初期化 - ファイルアップロード時に初めてSQL.jsを初期化
-// トップレベルでの初期化を避け、必要な時だけ初期化する
+// 💡 修正: SQL.jsの初期化ロジックを改善し、WASMファイルの自動検出を利用する
 let sqlJsInstance: any = null;
+let sqlJsInitializationPromise: Promise<any> | null = null;
 
-const ensureSqlJs = async () => {
-  if (sqlJsInstance) return sqlJsInstance;
-  
+const ensureSqlJs = () => {
+  // すでにインスタンスがあれば即時返す
+  if (sqlJsInstance) return Promise.resolve(sqlJsInstance);
+
+  // 現在初期化中であれば、そのPromiseを待つ
+  if (sqlJsInitializationPromise) return sqlJsInitializationPromise;
+
   console.log("[SQL.js] 初期化を開始...");
-  const baseURL = import.meta.env.BASE_URL || "/";
-  
-  try {
-    sqlJsInstance = await initSqlJs({
-      locateFile: (file: string) => {
-        const url = `${baseURL}${file}`;
-        console.log(`[SQL.js] Loading: ${url}`);
-        return url;
-      },
+
+  // 初期化処理をPromiseでラップし、多重実行を防ぐ
+  sqlJsInitializationPromise = initSqlJs({
+    // locateFileオプションを削除。
+    // importmap経由でCDNからsql.jsが読み込まれるため、
+    // WASMファイルも同じCDNの場所から自動的に取得されることを期待する。
+    // これが最もシンプルで堅牢な方法。
+  })
+    .then((SQL) => {
+      console.log("[SQL.js] 初期化成功");
+      sqlJsInstance = SQL; // 成功したらインスタンスを保存
+      sqlJsInitializationPromise = null; // Promiseをクリア
+      return SQL;
+    })
+    .catch((err) => {
+      console.error("[SQL.js] 初期化失敗:", err);
+      sqlJsInitializationPromise = null; // 失敗時もPromiseをクリア
+      // エラーを再スローして呼び出し元に伝える
+      throw new Error(
+        `SQL.jsの初期化に失敗しました。ネットワーク接続を確認してください: ${err}`
+      );
     });
-    console.log("[SQL.js] 初期化成功");
-    return sqlJsInstance;
-  } catch (err) {
-    console.error("[SQL.js] 初期化失敗:", err);
-    throw new Error(`SQL.jsの初期化に失敗しました: ${err}`);
-  }
+
+  return sqlJsInitializationPromise;
 };
 
 import React, {
@@ -583,14 +595,14 @@ const DeleteConfirmationModal: React.FC<{
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
     console.log("[MimiNote] バックアップ解析開始");
-    
-    // 💡 新戦略: 必要な時だけSQL.jsを初期化
+
+    // 💡 修正: 改善された初期化関数を呼び出す
     const SQL = await ensureSqlJs();
     console.log("[MimiNote] SQL.js初期化完了");
 
     const buffer = await file.arrayBuffer();
     console.log(`[MimiNote] ファイル読み込み完了: ${buffer.byteLength} bytes`);
-    
+
     // データベースインスタンスの作成
     const db = new SQL.Database(new Uint8Array(buffer));
     console.log("[MimiNote] データベース作成成功");
@@ -637,9 +649,15 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     console.log(`[MimiNote] ✅ ${notes.length}件のノートを正常に変換しました`);
     db.close();
     return notes;
-  } catch (U: any) {
-    console.error("ミミノートの解析中にエラー:", U);
-    throw new Error("ミミノートのバックアップ解析に失敗しました。");
+  } catch (err: any) {
+    console.error("ミミノートの解析中にエラー:", err);
+    // より具体的なエラーメッセージを投げる
+    if (err.message.includes("SQL.js")) {
+      throw err; // ensureSqlJsからのエラーをそのまま投げる
+    }
+    throw new Error(
+      `バックアップファイルの解析に失敗しました。ファイル形式が不正か、破損している可能性があります。`
+    );
   }
 }
 // --- ここまで追加 ---
