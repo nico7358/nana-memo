@@ -1421,7 +1421,7 @@ const NoteList: React.FC<any> = ({
       </main>
       {!isSelectionMode && (
         <footer className="flex-shrink-0 p-4 border-t border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => createNote()}
               className="flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
@@ -1432,6 +1432,7 @@ const NoteList: React.FC<any> = ({
               onClick={() => createNote()}
               className="flex-grow h-16 text-left px-6 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors text-lg"
             >
+              {" "}
               メモを入力...
             </button>
             <button
@@ -1635,7 +1636,7 @@ const NoteEditor: React.FC<any> = ({
             onClick={handleToggleNotificationPin}
             className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
               pinnedToNotificationIds.has(note.id)
-                ? "text-yellow-500 dark:text-yellow-400"
+                ? "text-rose-500 dark:text-rose-400"
                 : ""
             }`}
           >
