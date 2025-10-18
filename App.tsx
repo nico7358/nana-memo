@@ -1,25 +1,18 @@
-// App.tsx のファイル先頭付近
 import initSqlJs from "sql.js";
 
 // -----------------------------------------------------------
-// 💡 修正: SQL.jsのWASMファイルを直接フェッチする堅牢な初期化ロジックに変更
+// 💡 SQL.jsのWASMファイルを直接フェッチする堅牢な初期化ロジック
 let sqlJsInstance: any = null;
 let sqlJsInitializationPromise: Promise<any> | null = null;
 
 const ensureSqlJs = () => {
-  // すでにインスタンスがあれば即時返す
   if (sqlJsInstance) return Promise.resolve(sqlJsInstance);
-
-  // 現在初期化中であれば、そのPromiseを待つ
   if (sqlJsInitializationPromise) return sqlJsInitializationPromise;
 
   console.log("[SQL.js] 初期化を開始...");
 
-  // 初期化処理を非同期関数でラップし、Promiseとして保持する
   sqlJsInitializationPromise = (async () => {
     try {
-      // 1. WASMファイルをCDNから直接フェッチする
-      // 💡 修正: 正しいWASMファイルのパスに修正 (dist/ が抜けていた)
       const wasmURL =
         "https://aistudiocdn.com/sql.js@1.13.0/dist/sql-wasm.wasm";
       console.log(`[SQL.js] WASMの読み込み: ${wasmURL}`);
@@ -34,10 +27,8 @@ const ensureSqlJs = () => {
       });
       console.log(`[SQL.js] WASM読み込み完了: ${wasmBinary.byteLength} bytes`);
 
-      // 2. フェッチしたWASMバイナリを直接initSqlJsに渡す
       const SQL = await initSqlJs({ wasmBinary });
 
-      // 3. 初期化後のオブジェクトが正常か厳密にチェックする
       if (!SQL || typeof SQL.Database !== "function") {
         console.error(
           "[SQL.js] 初期化は成功しましたが、SQLオブジェクトが不正です。"
@@ -48,13 +39,12 @@ const ensureSqlJs = () => {
       }
 
       console.log("[SQL.js] 初期化成功");
-      sqlJsInstance = SQL; // 成功したらインスタンスを保存
-      sqlJsInitializationPromise = null; // Promiseをクリア
+      sqlJsInstance = SQL;
+      sqlJsInitializationPromise = null;
       return SQL;
     } catch (err) {
       console.error("[SQL.js] 初期化失敗:", err);
-      sqlJsInitializationPromise = null; // 失敗時もPromiseをクリア
-      // エラーを再スローして呼び出し元に伝える
+      sqlJsInitializationPromise = null;
       throw new Error(
         `SQL.jsエンジンの初期化に失敗しました。ネットワーク接続を確認してください: ${err}`
       );
@@ -65,50 +55,32 @@ const ensureSqlJs = () => {
 };
 
 // -----------------------------------------------------------
-// 💡 日付パース用のヘルパー関数を追加
+// 💡 日付パース用のヘルパー関数
 // -----------------------------------------------------------
-/**
- * バックアップファイル内の様々な形式の日付データをパースして、
- * Unixタイムスタンプ（ミリ秒）に変換する堅牢な関数。
- * @param dateInput - データベースから取得した日付データ (数値、文字列、nullなど)
- * @returns パースされたタイムスタンプ（ミリ秒）、または失敗した場合はnull
- */
 const parseBackupDate = (dateInput: any): number | null => {
   if (dateInput === null || dateInput === undefined || dateInput === "") {
     return null;
   }
 
-  // 1. 数値の場合 (Unixタイムスタンプの可能性)
   if (typeof dateInput === "number") {
-    // 桁数で秒かミリ秒かを判定 (簡易的だが効果的)
-    // 10桁 -> 秒、 13桁 -> ミリ秒
     if (String(dateInput).length === 10) {
-      return dateInput * 1000; // 秒をミリ秒に変換
+      return dateInput * 1000;
     }
-    return dateInput; // ミリ秒と仮定
+    return dateInput;
   }
 
-  // 2. 文字列の場合
   if (typeof dateInput === "string") {
     let timestamp = NaN;
-
-    // 'YYYY-MM-DD HH:MM:SS' のような一般的な形式に対応するため、スペースを'T'に置換
-    // これにより、ほとんどのJavaScriptエンジンでISO 8601形式として解釈されやすくなる
     if (dateInput.includes(" ") && dateInput.includes(":")) {
       const isoLikeString = dateInput.replace(" ", "T");
       timestamp = new Date(isoLikeString).getTime();
     }
-
-    // 上記でパースできない場合、または別の形式（例: 'YYYY/MM/DD'）の場合、
-    // Dateコンストラクタに直接渡してパースを試みる
     if (isNaN(timestamp)) {
       timestamp = new Date(dateInput).getTime();
     }
-
     return isNaN(timestamp) ? null : timestamp;
   }
 
-  // 数値でも文字列でもない場合はパース不可
   return null;
 };
 
@@ -432,14 +404,12 @@ const StrikethroughIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 // --- うさぎボーダーコンポーネント ---
 const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
-  // ぴょんぴょん跳ねるうさぎの耳をイメージした、より可愛いボーダー
   const svgString = (color: string) => `
     <svg width="40" height="24" viewBox="0 0 40 24" xmlns="http://www.w3.org/2000/svg">
       <path d="M-2,20 C5,-5 15,-5 20,20 C25,-5 35,-5 42,20" stroke="${color}" fill="none" stroke-width="3" stroke-linecap="round"/>
     </svg>
   `;
 
-  // 元のボーダー色に合わせる
   const lightColor = "#fde08a"; // amber-200
   const darkColor = "#334155"; // slate-700
 
@@ -452,14 +422,14 @@ const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
 
   return (
     <div
-      className="h-6 w-full flex-shrink-0" // 高さを少し大きく
+      className="h-6 w-full flex-shrink-0"
       style={{
         backgroundImage: isDarkMode ? svgUrlDark : svgUrlLight,
         backgroundRepeat: "repeat-x",
-        backgroundSize: "32px 20px", // サイズを調整して密度と見た目を改善
-        backgroundPosition: "center bottom", // 下端に合わせる
+        backgroundSize: "32px 20px",
+        backgroundPosition: "center bottom",
       }}
-      aria-hidden="true" // 装飾的な要素なのでスクリーンリーダーから隠す
+      aria-hidden="true"
     />
   );
 };
@@ -663,7 +633,6 @@ const DeleteConfirmationModal: React.FC<{
   );
 };
 
-// --- ここから修正 ---
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
     console.log("[MimiNote] バックアップ解析開始");
@@ -682,8 +651,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     );
     console.log("[MimiNote] テーブル一覧:", tables);
 
-    // 💡 修正: 正しいノートテーブルを選択するロジックを改善
-    // 'android_metadata' のようなシステムテーブルを除外して、実際のメモデータテーブルを探す
     const tableNames = tables[0]?.values?.map((row) => row[0] as string) || [];
     const filteredTables = tableNames.filter(
       (name) => name !== "android_metadata" && name !== "sqlite_sequence"
@@ -700,7 +667,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     }
 
     const result = db.exec(`SELECT * FROM ${tableName}`);
-    // 💡 修正: データが0件の場合も考慮
     if (!result.length || result[0].values.length === 0) {
       console.log("[MimiNote] バックアップデータが空です。");
       db.close();
@@ -716,20 +682,17 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       const obj: any = {};
       columns.forEach((col, i) => (obj[col] = row[i]));
 
-      // 💡 修正: 新しい日付パース関数を使用して、元の日時を正確に復元
       const parsedCreatedAt = parseBackupDate(obj.creation_date);
       const parsedUpdatedAt = parseBackupDate(obj.update_date);
 
-      // パースに成功した場合はその値を使い、失敗した場合はフォールバック
       const createdAt = parsedCreatedAt !== null ? parsedCreatedAt : Date.now();
       const updatedAt = parsedUpdatedAt !== null ? parsedUpdatedAt : createdAt;
 
-      // 💡 修正 2: 改行コードを<br>に変換
       const plainText = String(obj.text || "");
       const contentAsHtml = plainText.replace(/\n/g, "<br>");
 
       return {
-        id: String(obj._id || createdAt + Math.random()), // IDの衝突を避ける
+        id: String(obj._id || createdAt + Math.random()),
         content: contentAsHtml,
         createdAt,
         updatedAt,
@@ -753,7 +716,7 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     );
   }
 }
-// --- ここまで追加 ---
+
 // --- Main App Component ---
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -782,7 +745,7 @@ export default function App() {
     Set<string>
   >(new Set());
   const [showBackupBadge, setShowBackupBadge] = useState(false);
-  const [sortByPin, setSortByPin] = useState(true); // State for pin sorting
+  const [sortByPin, setSortByPin] = useState(true);
   const [startVoiceOnMount, setStartVoiceOnMount] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -797,7 +760,6 @@ export default function App() {
   const settingsContainerRef = useRef<HTMLDivElement>(null);
   const lastRenderedNoteId = useRef<string | null>(null);
 
-  // FIX: Moved activeNote and activeNoteRef declarations before they are used in useEffect.
   const activeNote = useMemo(
     () => notes.find((note) => note.id === activeNoteId),
     [notes, activeNoteId]
@@ -821,7 +783,7 @@ export default function App() {
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      return; // Don't run on first render
+      return;
     }
 
     try {
@@ -853,10 +815,7 @@ export default function App() {
         : 0;
       const ONE_WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
 
-      // Condition 1: More than a week has passed since the last backup.
       const needsBackupByTime = Date.now() - lastBackupTime > ONE_WEEK_IN_MS;
-
-      // Condition 2: A note has been pinned since the last backup.
       const hasNewPin =
         localStorage.getItem("nana-memo-new-pin-since-backup") === "true";
 
@@ -866,13 +825,10 @@ export default function App() {
         setShowBackupBadge(false);
       }
     };
-
-    // Check on initial load (after notes are loaded) and on subsequent changes.
     checkBackupStatus();
   }, [notes]);
 
   // --- Notification Pinning Logic ---
-  // Load pinned notification IDs from localStorage
   useEffect(() => {
     try {
       const savedPinnedIds = localStorage.getItem(
@@ -889,11 +845,10 @@ export default function App() {
     }
   }, []);
 
-  // Save pinned notification IDs to localStorage
   useEffect(() => {
     if (isInitialPinnedIdsMount.current) {
       isInitialPinnedIdsMount.current = false;
-      return; // Don't save on first render
+      return;
     }
     try {
       localStorage.setItem(
@@ -908,7 +863,6 @@ export default function App() {
     }
   }, [pinnedToNotificationIds]);
 
-  // Sync notifications with state on app load
   useEffect(() => {
     const syncNotifications = async () => {
       if (!("serviceWorker" in navigator) || !("Notification" in window))
@@ -978,8 +932,6 @@ export default function App() {
   // Focus editor when a note is opened and sync content
   useEffect(() => {
     if (activeNote && editorRef.current) {
-      // Only update innerHTML when switching to a different note
-      // to avoid losing cursor position during typing.
       if (lastRenderedNoteId.current !== activeNote.id) {
         editorRef.current.innerHTML = activeNote.content;
         lastRenderedNoteId.current = activeNote.id;
@@ -991,23 +943,19 @@ export default function App() {
         setStartVoiceOnMount(false);
       }
     } else {
-      // Reset when no note is active
       lastRenderedNoteId.current = null;
     }
-    // Enable CSS styling for execCommand to use <span> instead of <font> tags.
     document.execCommand("styleWithCSS", false, "true");
   }, [activeNote, startVoiceOnMount, handleVoiceInput]);
 
   // Handle deep-linking from notifications
   useEffect(() => {
-    // This effect should run only once when the app loads and notes are available
     if (notes.length === 0) return;
 
     const params = new URLSearchParams(window.location.search);
     const noteId = params.get("noteId");
     if (noteId && notes.find((n) => n.id === noteId)) {
       setActiveNoteId(noteId);
-      // Clean up the URL to avoid re-triggering on refresh
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [notes]);
@@ -1082,23 +1030,29 @@ export default function App() {
     []
   );
 
+  const handleCloseEditor = () => {
+    if (activeNote) {
+      const plainText = getPlainText(activeNote.content).trim();
+      if (plainText === "") {
+        setNotes((prevNotes) =>
+          prevNotes.filter((note) => note.id !== activeNote.id)
+        );
+      }
+    }
+    setActiveNoteId(null);
+  };
+
   const saveSelection = useCallback(() => {
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
-      // Only save the selection if it's inside the editor.
       if (editorRef.current?.contains(range.commonAncestorContainer)) {
-        // cloneRange() creates a snapshot of the range.
-        // This is crucial because the original Range object is live and will change
-        // if the user clicks elsewhere, clearing the selection.
         selectionRangeRef.current = range.cloneRange();
       }
     }
   }, []);
 
-  // Use the 'selectionchange' event for a more robust way to track selection.
   useEffect(() => {
-    // This event fires whenever the selection in the document changes.
     document.addEventListener("selectionchange", saveSelection);
     return () => {
       document.removeEventListener("selectionchange", saveSelection);
@@ -1107,15 +1061,12 @@ export default function App() {
 
   const applyColor = useCallback(
     (colorClass: string) => {
-      // Use toString().length > 0 for a more robust check of whether text is selected.
       if (
         selectionRangeRef.current &&
         selectionRangeRef.current.toString().length > 0
       ) {
-        // To programmatically modify the selection, the editor must be focused.
         editorRef.current?.focus();
 
-        // Restore the saved selection.
         const selection = window.getSelection();
         if (selection) {
           selection.removeAllRanges();
@@ -1126,17 +1077,13 @@ export default function App() {
         const colorHex = map[colorClass];
 
         if (colorHex) {
-          // Apply the color to the restored selection.
           document.execCommand("foreColor", false, colorHex);
-          // The selection might be collapsed after the command, so re-save the current state.
           saveSelection();
-          // Manually dispatch an input event to notify React of the content change.
           editorRef.current?.dispatchEvent(
             new Event("input", { bubbles: true, cancelable: true })
           );
         }
       } else {
-        // If no text was selected, change the default color for the entire note.
         if (activeNoteId) {
           updateNote(activeNoteId, { color: colorClass });
         }
@@ -1147,12 +1094,10 @@ export default function App() {
 
   const applyFontSize = useCallback(
     (sizeClass: string) => {
-      // Use toString().length > 0 for a more robust check of whether text is selected.
       if (
         selectionRangeRef.current &&
         selectionRangeRef.current.toString().length > 0
       ) {
-        // Restore the selection first.
         editorRef.current?.focus();
         const selection = window.getSelection();
         if (selection) {
@@ -1162,17 +1107,13 @@ export default function App() {
 
         const sizeCommand = FONT_SIZE_COMMAND_MAP[sizeClass];
         if (sizeCommand) {
-          // Apply the font size command.
           document.execCommand("fontSize", false, sizeCommand);
-          // Save the selection state again.
           saveSelection();
-          // Trigger React's state update.
           editorRef.current?.dispatchEvent(
             new Event("input", { bubbles: true, cancelable: true })
           );
         }
       } else {
-        // If no text is selected, update the default font size for the entire note.
         if (activeNoteId) {
           updateNote(activeNoteId, { fontSize: sizeClass });
         }
@@ -1250,7 +1191,7 @@ export default function App() {
     if (activeNoteId === noteIdToDelete) {
       setActiveNoteId(null);
     }
-    unpinFromNotification(noteIdToDelete, false); // Also unpin from notification if deleted, without toast
+    unpinFromNotification(noteIdToDelete, false);
     setNoteIdToDelete(null);
     setToastMessage("メモを削除しました。");
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -1268,7 +1209,6 @@ export default function App() {
     try {
       const registration = await navigator.serviceWorker.ready;
 
-      // ✅ Service Worker にメッセージを送信（ここが重要）
       registration.active?.postMessage({
         type: "SHOW_NOTE_NOTIFICATION",
         payload: {
@@ -1284,7 +1224,6 @@ export default function App() {
     } catch (err) {
       console.error("通知送信失敗:", err);
 
-      // エラー時にピン留め解除
       setPinnedToNotificationIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(note.id);
@@ -1298,7 +1237,6 @@ export default function App() {
   };
 
   const unpinFromNotification = async (noteId: string, showToast = true) => {
-    // Optimistically update UI
     setPinnedToNotificationIds((prev) => {
       const newSet = new Set(prev);
       newSet.delete(noteId);
@@ -1323,7 +1261,6 @@ export default function App() {
         "Failed to unpin notification:",
         error instanceof Error ? error.stack || error.message : String(error)
       );
-      // Revert state on failure
       setPinnedToNotificationIds((prev) => new Set(prev).add(noteId));
       if (showToast) {
         setToastMessage("通知の解除に失敗しました。");
@@ -1353,7 +1290,6 @@ export default function App() {
     if (pinnedToNotificationIds.has(note.id)) {
       await unpinFromNotification(note.id);
     } else {
-      // Optimistically update the UI *before* requesting permission to provide immediate feedback.
       setPinnedToNotificationIds((prev) => new Set(prev).add(note.id));
 
       const permission = await Notification.requestPermission();
@@ -1364,7 +1300,6 @@ export default function App() {
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
 
-        // Revert the optimistic update if permission is not granted.
         setPinnedToNotificationIds((prev) => {
           const newSet = new Set(prev);
           newSet.delete(note.id);
@@ -1423,7 +1358,6 @@ export default function App() {
     setShowRestoreConfirm(file);
     setShowSettings(false);
 
-    // Reset file input so the same file can be selected again
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -1436,15 +1370,12 @@ export default function App() {
       let importedNotes: Note[] = [];
       const fileName = file.name.toLowerCase();
 
-      // --- ここからが新しいロジック ---
       if (fileName.endsWith(".json")) {
-        // JSONファイルの処理
         const text = await file.text();
         const parsedData = JSON.parse(text);
         if (!Array.isArray(parsedData))
           throw new Error("無効なJSONファイル形式です。");
 
-        // nanamemo形式か、古い形式かを判定して変換
         if (parsedData.length > 0 && "content" in parsedData[0]) {
           importedNotes = parsedData.map((n: any) => ({
             id: n.id,
@@ -1456,16 +1387,12 @@ export default function App() {
             font: n.font || "font-sans",
             fontSize: n.fontSize || "text-lg",
           }));
-        } else {
-          // 他のJSON形式からのインポートロジック (必要であれば)
         }
       } else if (fileName.endsWith(".mimibk")) {
-        // ミミノート(.mimibk)ファイルの処理
         importedNotes = await parseMimiNoteBackup(file);
       } else {
         throw new Error("サポートされていないバックアップファイル形式です。");
       }
-      // --- ここまでが新しいロジック ---
 
       if (importedNotes.length === 0) {
         setNotes([]);
@@ -1589,7 +1516,7 @@ export default function App() {
   const confirmBulkDelete = () => {
     const idsToDelete = Array.from(selectedNoteIds);
     setNotes((notes) => notes.filter((note) => !idsToDelete.includes(note.id)));
-    idsToDelete.forEach((id) => unpinFromNotification(String(id), false)); // ← ← ここ！
+    idsToDelete.forEach((id) => unpinFromNotification(String(id), false));
     setShowBulkDeleteConfirm(false);
     exitSelectionMode();
     setToastMessage(`${idsToDelete.length}件のメモを削除しました。`);
@@ -1747,7 +1674,7 @@ export default function App() {
           <header className="relative flex-shrink-0 flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => setActiveNoteId(null)}
+                onClick={handleCloseEditor}
                 className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
               >
                 <ChevronLeftIcon className="w-6 h-6" />
@@ -1812,7 +1739,7 @@ export default function App() {
                 <TrashIcon className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setActiveNoteId(null)}
+                onClick={handleCloseEditor}
                 className="ml-2 px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500"
               >
                 完了
@@ -2292,7 +2219,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => createNote()}
-                className="flex-grow h-12 text-left px-4 rounded-full bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                className="flex-grow h-12 text-left px-4 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors"
                 aria-label="メモを入力して開始"
               >
                 メモを入力...
