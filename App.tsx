@@ -406,9 +406,25 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
     const SQL = await ensureSqlJs();
     const db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
-    const result = db.exec("SELECT * FROM mimi_notes"); // Assuming table name
+
+    // テーブル名を動的に検出
+    const tablesResult = db.exec(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
+    );
+    if (!tablesResult.length || !tablesResult[0].values.length) {
+      db.close();
+      throw new Error(
+        "バックアップファイル内にメモのテーブルが見つかりませんでした。"
+      );
+    }
+    // ユーザーが作成した最初のテーブルをメモテーブルと仮定
+    const tableName = tablesResult[0].values[0][0] as string;
+
+    const result = db.exec(`SELECT * FROM "${tableName}"`);
     db.close();
+
     if (!result.length) return [];
+
     return result[0].values.map((row: any[]) => {
       const obj: any = {};
       result[0].columns.forEach((col, i) => (obj[col] = row[i]));
@@ -426,7 +442,12 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     });
   } catch (err: any) {
     console.error("ミミノートの解析中にエラー:", err);
-    throw new Error(`バックアップファイルの解析に失敗しました: ${err.message}`);
+    const errorMessage = err.message.includes("table")
+      ? `テーブルが見つからないか、形式が異なります。(${err.message})`
+      : err.message;
+    throw new Error(
+      `バックアップファイルの解析に失敗しました: ${errorMessage}`
+    );
   }
 }
 
@@ -487,7 +508,6 @@ const useNotes = () => {
     setNotes((prev) => prev.filter((note) => !ids.includes(note.id)));
   }, []);
 
-  // FIX: Allow functional updates for setNotes to fix a latent bug in NoteList.
   const replaceAllNotes = useCallback(
     (newNotes: React.SetStateAction<Note[]>) => {
       setNotes(newNotes);
@@ -1011,7 +1031,6 @@ export default function App() {
 
   return (
     <>
-      {/* FIX: Removed unused 'unpinFromNotification' prop that was causing a type error. */}
       <NoteList
         notes={filteredNotes}
         isDarkMode={isDarkMode}
