@@ -2221,28 +2221,28 @@ export default function App() {
         </main>
 
         {!isSelectionMode && (
-          <footer className="flex-shrink-0 p-2 border-t border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800">
-            <div className="flex items-center gap-2">
+          <footer className="flex-shrink-0 p-4 border-t border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => createNote()}
-                className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
+                className="flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
                 aria-label="新規メモ"
               >
-                <PlusIcon className="w-6 h-6 text-slate-600 dark:text-slate-200" />
+                <PlusIcon className="w-8 h-8 text-slate-600 dark:text-slate-200" />
               </button>
               <button
                 onClick={() => createNote()}
-                className="flex-grow h-12 text-left px-4 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors"
+                className="flex-grow h-16 text-left px-6 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors text-lg"
                 aria-label="メモを入力して開始"
               >
                 メモを入力...
               </button>
               <button
                 onClick={() => createNote(true)}
-                className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
+                className="flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
                 aria-label="音声入力で新規メモ"
               >
-                <MicrophoneIcon className="w-6 h-6 text-slate-600 dark:text-slate-200" />
+                <MicrophoneIcon className="w-8 h-8 text-slate-600 dark:text-slate-200" />
               </button>
             </div>
           </footer>
