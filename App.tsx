@@ -419,8 +419,9 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     }
     const tableNames = tablesResult[0].values.flat() as string[];
 
-    // 2. Find the correct table by inspecting its columns for 'text' and a date column
-    let notesTableName: string | null = null;
+    let bestTable: { name: string; mappings: any } | null = null;
+
+    // 2. Find the best table by inspecting its columns and create dynamic mappings
     for (const tableName of tableNames) {
       try {
         const tableInfoResult = db.exec(`PRAGMA table_info("${tableName}")`);
@@ -428,27 +429,44 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
           const columns = tableInfoResult[0].values.map((row) =>
             (row[1] as string).toLowerCase()
           );
-          if (
-            columns.includes("text") &&
-            (columns.includes("creation_date") ||
-              columns.includes("update_date"))
-          ) {
-            notesTableName = tableName;
-            break;
+
+          const mappings = {
+            id: columns.find((c) => c === "_id" || c === "id"),
+            content: columns.find(
+              (c) => c === "text" || c === "content" || c === "note"
+            ),
+            createdAt: columns.find(
+              (c) =>
+                c === "creation_date" || c === "created_at" || c === "created"
+            ),
+            updatedAt: columns.find(
+              (c) =>
+                c === "update_date" || c === "updated_at" || c === "modified"
+            ),
+            isPinned: columns.find(
+              (c) => c === "ear" || c === "pinned" || c === "is_pinned"
+            ),
+          };
+
+          // A valid table must have a content column and at least one date column.
+          if (mappings.content && (mappings.createdAt || mappings.updatedAt)) {
+            bestTable = { name: tableName, mappings };
+            break; // Found a suitable table, stop searching.
           }
         }
       } catch (e) {
-        // Ignore tables that can't be introspected
         console.warn(`Could not inspect table "${tableName}":`, e);
       }
     }
 
-    if (!notesTableName) {
+    if (!bestTable) {
       db.close();
       throw new Error(
-        "バックアップファイルから有効なメモテーブルを特定できませんでした。"
+        "バックアップファイルから有効なメモデータを特定できませんでした。"
       );
     }
+
+    const { name: notesTableName, mappings } = bestTable;
 
     // 3. Proceed with the identified table
     const result = db.exec(`SELECT * FROM "${notesTableName}"`);
@@ -456,17 +474,33 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
 
     if (!result.length) return [];
 
-    // 4. Map rows to Note objects
+    // 4. Map rows to Note objects using the dynamic mappings
     return result[0].values.map((row: any[]) => {
       const obj: any = {};
-      result[0].columns.forEach((col, i) => (obj[col] = row[i]));
-      const createdAt = parseBackupDate(obj.creation_date) || Date.now();
+      result[0].columns.forEach((col, i) => (obj[col.toLowerCase()] = row[i]));
+
+      const createdAt = parseBackupDate(
+        mappings.createdAt ? obj[mappings.createdAt] : null
+      );
+      const updatedAt = parseBackupDate(
+        mappings.updatedAt ? obj[mappings.updatedAt] : null
+      );
+      const finalCreatedAt = createdAt || updatedAt || Date.now();
+
       return {
-        id: String(obj._id || createdAt + Math.random()),
-        content: String(obj.text || "").replace(/\n/g, "<br>"),
-        createdAt,
-        updatedAt: parseBackupDate(obj.update_date) || createdAt,
-        isPinned: Boolean(obj.ear === 1),
+        id: String(
+          mappings.id && obj[mappings.id]
+            ? obj[mappings.id]
+            : finalCreatedAt + Math.random()
+        ),
+        content: String(
+          (mappings.content ? obj[mappings.content] : "") || ""
+        ).replace(/\n/g, "<br>"),
+        createdAt: finalCreatedAt,
+        updatedAt: updatedAt || finalCreatedAt,
+        isPinned: Boolean(
+          mappings.isPinned ? obj[mappings.isPinned] === 1 : false
+        ),
         color: "text-slate-800 dark:text-slate-200",
         font: "font-sans",
         fontSize: "text-lg",
@@ -474,12 +508,7 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     });
   } catch (err: any) {
     console.error("ミミノートの解析中にエラー:", err);
-    const errorMessage = err.message.includes("table")
-      ? `テーブルが見つからないか、形式が異なります。(${err.message})`
-      : err.message;
-    throw new Error(
-      `バックアップファイルの解析に失敗しました: ${errorMessage}`
-    );
+    throw new Error(`バックアップファイルの解析に失敗しました: ${err.message}`);
   }
 }
 
@@ -1422,7 +1451,7 @@ const NoteList = React.memo<NoteListProps>(
                         type="file"
                         ref={fileInputRef}
                         onChange={handleRestore}
-                        accept=".json,.mimibk"
+                        accept=".json,.mimibk,application/octet-stream,application/x-sqlite3"
                         className="hidden"
                       />
                       <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
