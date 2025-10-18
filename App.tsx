@@ -2,7 +2,7 @@
 import initSqlJs from "sql.js";
 
 // -----------------------------------------------------------
-// 💡 修正: SQL.jsの初期化ロジックを改善し、WASMファイルの自動検出を利用する
+// 💡 修正: SQL.jsのWASMファイルを直接フェッチする堅牢な初期化ロジックに変更
 let sqlJsInstance: any = null;
 let sqlJsInitializationPromise: Promise<any> | null = null;
 
@@ -15,27 +15,50 @@ const ensureSqlJs = () => {
 
   console.log("[SQL.js] 初期化を開始...");
 
-  // 初期化処理をPromiseでラップし、多重実行を防ぐ
-  sqlJsInitializationPromise = initSqlJs({
-    // locateFileオプションを削除。
-    // importmap経由でCDNからsql.jsが読み込まれるため、
-    // WASMファイルも同じCDNの場所から自動的に取得されることを期待する。
-    // これが最もシンプルで堅牢な方法。
-  })
-    .then((SQL) => {
+  // 初期化処理を非同期関数でラップし、Promiseとして保持する
+  sqlJsInitializationPromise = (async () => {
+    try {
+      // 1. WASMファイルをCDNから直接フェッチする
+      // これにより、環境によるパス解決の問題を完全に回避する
+      const wasmURL = "https://aistudiocdn.com/sql.js@1.13.0/sql-wasm.wasm";
+      console.log(`[SQL.js] WASMの読み込み: ${wasmURL}`);
+
+      const wasmBinary = await fetch(wasmURL).then((res) => {
+        if (!res.ok) {
+          throw new Error(
+            `WASMファイルのダウンロードに失敗: ${res.status} ${res.statusText}`
+          );
+        }
+        return res.arrayBuffer();
+      });
+      console.log(`[SQL.js] WASM読み込み完了: ${wasmBinary.byteLength} bytes`);
+
+      // 2. フェッチしたWASMバイナリを直接initSqlJsに渡す
+      const SQL = await initSqlJs({ wasmBinary });
+
+      // 3. 初期化後のオブジェクトが正常か厳密にチェックする
+      if (!SQL || typeof SQL.Database !== "function") {
+        console.error(
+          "[SQL.js] 初期化は成功しましたが、SQLオブジェクトが不正です。"
+        );
+        throw new Error(
+          "SQL.js did not initialize correctly, the SQL object is invalid."
+        );
+      }
+
       console.log("[SQL.js] 初期化成功");
       sqlJsInstance = SQL; // 成功したらインスタンスを保存
       sqlJsInitializationPromise = null; // Promiseをクリア
       return SQL;
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error("[SQL.js] 初期化失敗:", err);
       sqlJsInitializationPromise = null; // 失敗時もPromiseをクリア
       // エラーを再スローして呼び出し元に伝える
       throw new Error(
-        `SQL.jsの初期化に失敗しました。ネットワーク接続を確認してください: ${err}`
+        `SQL.jsエンジンの初期化に失敗しました。ネットワーク接続を確認してください: ${err}`
       );
-    });
+    }
+  })();
 
   return sqlJsInitializationPromise;
 };
