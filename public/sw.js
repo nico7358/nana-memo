@@ -7,6 +7,7 @@ const APP_SHELL_URLS = [
   "/manifest.json",
   "/icon-192.png",
   "/icon-512.png",
+  "/icon-badge.png",
   "https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700&family=Dela+Gothic+One&family=Kiwi+Maru&display=swap",
 ];
 
@@ -128,6 +129,7 @@ self.addEventListener("message", (event) => {
     self.registration.showNotification(title, {
       body,
       icon: "/icon-192.png",
+      badge: "/icon-badge.png",
       tag: `note-${noteId}`,
       requireInteraction: true,
       data: { noteId },
