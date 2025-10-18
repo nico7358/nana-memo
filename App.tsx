@@ -407,7 +407,7 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     const SQL = await ensureSqlJs();
     const db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
 
-    // テーブル名を動的に検出
+    // テーブル名を堅牢に検出
     const tablesResult = db.exec(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
     );
@@ -417,8 +417,21 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         "バックアップファイル内にメモのテーブルが見つかりませんでした。"
       );
     }
-    // ユーザーが作成した最初のテーブルをメモテーブルと仮定
-    const tableName = tablesResult[0].values[0][0] as string;
+    const tableNames = tablesResult[0].values.flat() as string[];
+    let tableName = tableNames.find(
+      (name) => name.toLowerCase() === "mimi_notes"
+    );
+    if (!tableName)
+      tableName = tableNames.find((name) =>
+        name.toLowerCase().includes("note")
+      );
+    if (!tableName) tableName = tableNames[0];
+    if (!tableName) {
+      db.close();
+      throw new Error(
+        "バックアップファイルから有効なメモテーブルを特定できませんでした。"
+      );
+    }
 
     const result = db.exec(`SELECT * FROM "${tableName}"`);
     db.close();
@@ -1081,7 +1094,10 @@ export default function App() {
             <p className="text-slate-600 dark:text-slate-300 mb-6 text-center">
               バックアップから復元しますか？
               <br />
-              現在のメモはすべて上書きされます。
+              <strong className="text-rose-500 dark:text-rose-400">
+                現在のメモはすべて削除され、バックアップの内容に置き換わります。
+              </strong>
+              この操作は元に戻せません。
             </p>
             <div className="flex justify-end space-x-3">
               <button
