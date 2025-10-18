@@ -1,10 +1,10 @@
-import React, { lazy, Suspense } from 'react';
-import ReactDOM from 'react-dom/client';
+import React, { lazy, Suspense } from "react";
+import ReactDOM from "react-dom/client";
 
 // メインのAppコンポーネントを遅延読み込みする
-const App = lazy(() => import('./App'));
+const App = lazy(() => import("./App"));
 
-const rootElement = document.getElementById('root');
+const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
@@ -20,12 +20,5 @@ root.render(
   </React.StrictMode>
 );
 
-// ✅ サービスワーカーを登録して通知機能を有効化
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register(new URL('/sw.js', window.location.href).href)
-      .then(() => console.log('✅ Service Worker registered successfully'))
-      .catch((err) => console.error('❌ Service Worker registration failed:', err));
-  });
-}
+// ✅ サービスワーカーの登録はindex.htmlのインラインスクリプトで早期に実行されるため、ここでの二重登録は不要。
+// if ('serviceWorker' in navigator) { ... }

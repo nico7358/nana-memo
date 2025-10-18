@@ -1,7 +1,15 @@
 import initSqlJs from "sql.js";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 
 // -----------------------------------------------------------
 // 💡 SQL.jsのWASMファイルを直接フェッチする堅牢な初期化ロジック
+// -----------------------------------------------------------
 let sqlJsInstance: any = null;
 let sqlJsInitializationPromise: Promise<any> | null = null;
 
@@ -54,48 +62,10 @@ const ensureSqlJs = () => {
   return sqlJsInitializationPromise;
 };
 
-// -----------------------------------------------------------
-// 💡 日付パース用のヘルパー関数
-// -----------------------------------------------------------
-const parseBackupDate = (dateInput: any): number | null => {
-  if (dateInput === null || dateInput === undefined || dateInput === "") {
-    return null;
-  }
-
-  if (typeof dateInput === "number") {
-    if (String(dateInput).length === 10) {
-      return dateInput * 1000;
-    }
-    return dateInput;
-  }
-
-  if (typeof dateInput === "string") {
-    let timestamp = NaN;
-    if (dateInput.includes(" ") && dateInput.includes(":")) {
-      const isoLikeString = dateInput.replace(" ", "T");
-      timestamp = new Date(isoLikeString).getTime();
-    }
-    if (isNaN(timestamp)) {
-      timestamp = new Date(dateInput).getTime();
-    }
-    return isNaN(timestamp) ? null : timestamp;
-  }
-
-  return null;
-};
-
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useRef,
-  useCallback,
-} from "react";
-
 // --- Type Definitions ---
 type Note = {
   id: string;
-  content: string; // Can now contain HTML
+  content: string;
   createdAt: number;
   updatedAt: number;
   isPinned: boolean;
@@ -106,43 +76,47 @@ type Note = {
 
 type ViewMode = "list" | "calendar";
 
-// --- Helper Functions ---
-const formatDetailedDate = (timestamp: number) => {
-  return new Date(timestamp).toLocaleString("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+type DeleteConfirmation = {
+  ids: string[];
+  preview?: string;
 };
 
-const formatDay = (timestamp: number) => {
-  return new Date(timestamp)
+// --- Helper Functions ---
+const parseBackupDate = (dateInput: any): number | null => {
+  if (dateInput === null || dateInput === undefined || dateInput === "")
+    return null;
+  if (typeof dateInput === "number") {
+    return String(dateInput).length === 10 ? dateInput * 1000 : dateInput;
+  }
+  if (typeof dateInput === "string") {
+    let timestamp = new Date(
+      dateInput.includes(" ") && dateInput.includes(":")
+        ? dateInput.replace(" ", "T")
+        : dateInput
+    ).getTime();
+    return isNaN(timestamp) ? new Date(dateInput).getTime() : timestamp;
+  }
+  return null;
+};
+
+const formatDay = (timestamp: number) =>
+  new Date(timestamp)
     .toLocaleDateString("ja-JP", { day: "2-digit" })
     .replace("日", "");
-};
-
-const formatTime = (timestamp: number) => {
-  return new Date(timestamp).toLocaleTimeString("ja-JP", {
+const formatTime = (timestamp: number) =>
+  new Date(timestamp).toLocaleTimeString("ja-JP", {
     hour: "2-digit",
     minute: "2-digit",
   });
-};
-
 const getPlainText = (html: string) => {
   const div = document.createElement("div");
   div.innerHTML = html;
   return div.textContent || div.innerText || "";
 };
-
-const isSameDay = (d1: Date, d2: Date) => {
-  return (
-    d1.getFullYear() === d2.getFullYear() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getDate() === d2.getDate()
-  );
-};
+const isSameDay = (d1: Date, d2: Date) =>
+  d1.getFullYear() === d2.getFullYear() &&
+  d1.getMonth() === d2.getMonth() &&
+  d1.getDate() === d2.getDate();
 
 // --- Icon Components ---
 const RabbitIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -158,17 +132,12 @@ const RabbitIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeLinejoin="round"
       fill="none"
     >
-      {/* Head */}
       <path d="M83,59 C83,75.5,68.5,89,50,89 C31.5,89,17,75.5,17,59 C17,42.5,31.5,29,50,29 C68.5,29,83,42.5,83,59Z" />
-      {/* Ears */}
       <path d="M35,35 C28,15,40,12,45,30" />
       <path d="M65,35 C72,15,60,12,55,30" />
-      {/* Calm Eyes */}
       <path d="M40,59 A 4,4 0 0,0 46,59" />
       <path d="M54,59 A 4,4 0 0,0 60,59" />
-      {/* Nose */}
       <path d="M49,67 L51,67" />
-      {/* Gentle Smile */}
       <path d="M46,72 Q 48,74 50,72 Q 52,74 54,72" />
     </g>
   </svg>
@@ -404,27 +373,18 @@ const StrikethroughIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 // --- うさぎボーダーコンポーネント ---
 const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
-  const svgString = (color: string) => `
-    <svg width="40" height="24" viewBox="0 0 40 24" xmlns="http://www.w3.org/2000/svg">
-      <path d="M-2,20 C5,-5 15,-5 20,20 C25,-5 35,-5 42,20" stroke="${color}" fill="none" stroke-width="3" stroke-linecap="round"/>
-    </svg>
-  `;
-
+  const svgString = (color: string) =>
+    `<svg width="40" height="24" viewBox="0 0 40 24" xmlns="http://www.w3.org/2000/svg"><path d="M-2,20 C5,-5 15,-5 20,20 C25,-5 35,-5 42,20" stroke="${color}" fill="none" stroke-width="3" stroke-linecap="round"/></svg>`;
   const lightColor = "#fde08a"; // amber-200
   const darkColor = "#334155"; // slate-700
-
-  const svgUrlLight = `url("data:image/svg+xml,${encodeURIComponent(
-    svgString(lightColor)
+  const svgUrl = `url("data:image/svg+xml,${encodeURIComponent(
+    svgString(isDarkMode ? darkColor : lightColor)
   )}")`;
-  const svgUrlDark = `url("data:image/svg+xml,${encodeURIComponent(
-    svgString(darkColor)
-  )}")`;
-
   return (
     <div
       className="h-6 w-full flex-shrink-0"
       style={{
-        backgroundImage: isDarkMode ? svgUrlDark : svgUrlLight,
+        backgroundImage: svgUrl,
         backgroundRepeat: "repeat-x",
         backgroundSize: "32px 20px",
         backgroundPosition: "center bottom",
@@ -434,19 +394,18 @@ const RabbitBorder: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => {
   );
 };
 
+// --- Constants ---
 const FONT_OPTIONS = {
   "font-sans": "デフォルト",
   "font-dela": "デラゴシック",
   "font-kiwi": "キウイ丸",
 };
-
 const FONT_SIZE_OPTIONS = {
   "text-sm": "小",
   "text-base": "中",
   "text-lg": "大",
   "text-xl": "特大",
 };
-
 const COLOR_OPTIONS = {
   "text-slate-800 dark:text-slate-200": "デフォルト",
   "text-rose-600 dark:text-rose-400": "ローズ",
@@ -455,35 +414,80 @@ const COLOR_OPTIONS = {
   "text-yellow-600 dark:text-yellow-400": "イエロー",
   "text-purple-600 dark:text-purple-400": "パープル",
 };
-
-// Maps for rich text editing commands
 const COLOR_HEX_MAP_LIGHT: { [key: string]: string } = {
-  "text-slate-800 dark:text-slate-200": "#1e293b", // slate-800
-  "text-rose-600 dark:text-rose-400": "#e11d48", // rose-600
-  "text-blue-600 dark:text-blue-400": "#2563eb", // blue-600
-  "text-green-600 dark:text-green-400": "#16a34a", // green-600
-  "text-yellow-600 dark:text-yellow-400": "#ca8a04", // yellow-600
-  "text-purple-600 dark:text-purple-400": "#9333ea", // purple-600
+  "text-slate-800 dark:text-slate-200": "#1e293b",
+  "text-rose-600 dark:text-rose-400": "#e11d48",
+  "text-blue-600 dark:text-blue-400": "#2563eb",
+  "text-green-600 dark:text-green-400": "#16a34a",
+  "text-yellow-600 dark:text-yellow-400": "#ca8a04",
+  "text-purple-600 dark:text-purple-400": "#9333ea",
 };
-
 const COLOR_HEX_MAP_DARK: { [key: string]: string } = {
-  "text-slate-800 dark:text-slate-200": "#e2e8f0", // slate-200
-  "text-rose-600 dark:text-rose-400": "#fb7185", // rose-400
-  "text-blue-600 dark:text-blue-400": "#60a5fa", // blue-400
-  "text-green-600 dark:text-green-400": "#4ade80", // green-400
-  "text-yellow-600 dark:text-yellow-400": "#facc15", // yellow-400
-  "text-purple-600 dark:text-purple-400": "#c084fc", // purple-400
+  "text-slate-800 dark:text-slate-200": "#e2e8f0",
+  "text-rose-600 dark:text-rose-400": "#fb7185",
+  "text-blue-600 dark:text-blue-400": "#60a5fa",
+  "text-green-600 dark:text-green-400": "#4ade80",
+  "text-yellow-600 dark:text-yellow-400": "#facc15",
+  "text-purple-600 dark:text-purple-400": "#c084fc",
 };
-
 const FONT_SIZE_COMMAND_MAP: { [key: string]: string } = {
-  "text-sm": "2", // 10pt
-  "text-base": "3", // 12pt
-  "text-lg": "4", // 14pt
-  "text-xl": "5", // 18pt
+  "text-sm": "2",
+  "text-base": "3",
+  "text-lg": "4",
+  "text-xl": "5",
 };
 
-// --- Note Item Component (Memoized for performance) ---
-type NoteItemProps = {
+async function parseMimiNoteBackup(file: File): Promise<Note[]> {
+  try {
+    console.log("[MimiNote] バックアップ解析開始");
+    const SQL = await ensureSqlJs();
+    const buffer = await file.arrayBuffer();
+    const db = new SQL.Database(new Uint8Array(buffer));
+    const tables = db.exec(
+      "SELECT name FROM sqlite_master WHERE type='table';"
+    );
+    const tableNames = tables[0]?.values?.map((row) => row[0] as string) || [];
+    const filteredTables = tableNames.filter(
+      (name) => name !== "android_metadata" && name !== "sqlite_sequence"
+    );
+    const tableName = filteredTables[0] || "mimi_notes";
+    if (!tableNames.includes(tableName)) {
+      db.close();
+      throw new Error(`テーブル'${tableName}'が見つかりません。`);
+    }
+    const result = db.exec(`SELECT * FROM ${tableName}`);
+    if (!result.length || result[0].values.length === 0) {
+      db.close();
+      return [];
+    }
+    const rows = result[0].values;
+    const columns = result[0].columns;
+    const notes: Note[] = rows.map((row: any[]) => {
+      const obj: any = {};
+      columns.forEach((col, i) => (obj[col] = row[i]));
+      const createdAt = parseBackupDate(obj.creation_date) || Date.now();
+      return {
+        id: String(obj._id || createdAt + Math.random()),
+        content: String(obj.text || "").replace(/\n/g, "<br>"),
+        createdAt,
+        updatedAt: parseBackupDate(obj.update_date) || createdAt,
+        isPinned: Boolean(obj.ear === 1),
+        color: "text-slate-800 dark:text-slate-200",
+        font: "font-sans",
+        fontSize: "text-lg",
+      };
+    });
+    db.close();
+    return notes;
+  } catch (err: any) {
+    console.error("ミミノートの解析中にエラー:", err);
+    throw new Error(`バックアップファイルの解析に失敗しました: ${err.message}`);
+  }
+}
+
+// --- Sub-components (Refactored from App) ---
+
+const NoteItem = React.memo<{
   note: Note;
   isSelected: boolean;
   isSelectionMode: boolean;
@@ -492,9 +496,7 @@ type NoteItemProps = {
   onPointerUp: () => void;
   onPointerLeave: () => void;
   onContextMenu: (e: React.MouseEvent<HTMLDivElement>, id: string) => void;
-};
-
-const NoteItem = React.memo<NoteItemProps>(
+}>(
   ({
     note,
     isSelected,
@@ -509,7 +511,6 @@ const NoteItem = React.memo<NoteItemProps>(
       () => getPlainText(note.content) || "新規メモ",
       [note.content]
     );
-
     return (
       <div
         role="button"
@@ -519,9 +520,8 @@ const NoteItem = React.memo<NoteItemProps>(
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerLeave}
         onContextMenu={(e) => onContextMenu(e, note.id)}
-        className={`relative flex w-full text-left rounded-lg shadow-md bg-white dark:bg-slate-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden`}
+        className="relative flex w-full text-left rounded-lg shadow-md bg-white dark:bg-slate-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
       >
-        {/* Date Section (Left) */}
         <div className="flex-shrink-0 flex flex-col items-center justify-center w-20 p-4 border-r border-slate-100 dark:border-slate-600">
           <span className="text-4xl font-bold text-rose-500 dark:text-rose-400 font-sans">
             {formatDay(note.updatedAt)}
@@ -530,8 +530,6 @@ const NoteItem = React.memo<NoteItemProps>(
             {formatTime(note.updatedAt)}
           </span>
         </div>
-
-        {/* Content Section (Right) */}
         <div className="flex-grow p-4 min-w-0 flex items-center">
           <p
             className={`whitespace-pre-wrap break-words line-clamp-4 ${
@@ -541,7 +539,6 @@ const NoteItem = React.memo<NoteItemProps>(
             {plainTextContent}
           </p>
         </div>
-
         {note.isPinned && (
           <div className="absolute top-0 right-0 w-8 h-8">
             <div
@@ -550,7 +547,6 @@ const NoteItem = React.memo<NoteItemProps>(
             ></div>
           </div>
         )}
-
         {isSelectionMode && (
           <div
             className={`absolute inset-0 rounded-lg transition-all pointer-events-none ${
@@ -570,14 +566,13 @@ const NoteItem = React.memo<NoteItemProps>(
 );
 
 const DeleteConfirmationModal: React.FC<{
-  isOpen: boolean;
-  itemCount: number;
-  itemPreview?: string;
+  confirmation: DeleteConfirmation | null;
   onConfirm: () => void;
   onCancel: () => void;
-}> = ({ isOpen, itemCount, itemPreview, onConfirm, onCancel }) => {
-  if (!isOpen) return null;
-
+}> = ({ confirmation, onConfirm, onCancel }) => {
+  if (!confirmation) return null;
+  const { ids, preview } = confirmation;
+  const itemCount = ids.length;
   const title = itemCount > 1 ? `${itemCount}件のメモを削除` : "メモの削除";
   const message =
     itemCount > 1
@@ -605,15 +600,13 @@ const DeleteConfirmationModal: React.FC<{
         <p className="text-slate-600 dark:text-slate-300 mb-4 text-center">
           {message}
         </p>
-
-        {itemPreview && (
+        {preview && (
           <div className="bg-slate-100 dark:bg-slate-700 p-3 rounded-md mb-6 max-h-24 overflow-y-auto">
             <p className="text-sm text-slate-700 dark:text-slate-300 break-words">
-              {itemPreview}
+              {preview}
             </p>
           </div>
         )}
-
         <div className="flex justify-end space-x-3">
           <button
             onClick={onCancel}
@@ -633,90 +626,6 @@ const DeleteConfirmationModal: React.FC<{
   );
 };
 
-async function parseMimiNoteBackup(file: File): Promise<Note[]> {
-  try {
-    console.log("[MimiNote] バックアップ解析開始");
-
-    const SQL = await ensureSqlJs();
-    console.log("[MimiNote] SQL.js初期化完了");
-
-    const buffer = await file.arrayBuffer();
-    console.log(`[MimiNote] ファイル読み込み完了: ${buffer.byteLength} bytes`);
-
-    const db = new SQL.Database(new Uint8Array(buffer));
-    console.log("[MimiNote] データベース作成成功");
-
-    const tables = db.exec(
-      "SELECT name FROM sqlite_master WHERE type='table';"
-    );
-    console.log("[MimiNote] テーブル一覧:", tables);
-
-    const tableNames = tables[0]?.values?.map((row) => row[0] as string) || [];
-    const filteredTables = tableNames.filter(
-      (name) => name !== "android_metadata" && name !== "sqlite_sequence"
-    );
-
-    const tableName = filteredTables[0] || tableNames[0] || "mimi_notes";
-    console.log(`[MimiNote] 使用するテーブル名: ${tableName}`);
-
-    if (!tableNames.includes(tableName)) {
-      db.close();
-      throw new Error(
-        `指定されたテーブル'${tableName}'がデータベース内に見つかりません。`
-      );
-    }
-
-    const result = db.exec(`SELECT * FROM ${tableName}`);
-    if (!result.length || result[0].values.length === 0) {
-      console.log("[MimiNote] バックアップデータが空です。");
-      db.close();
-      return [];
-    }
-    console.log(`[MimiNote] ${result[0].values.length}件のノートを取得`);
-
-    const rows = result[0].values;
-    const columns = result[0].columns;
-    console.log("[MimiNote] カラム名:", columns);
-
-    const notes: Note[] = rows.map((row: any[]) => {
-      const obj: any = {};
-      columns.forEach((col, i) => (obj[col] = row[i]));
-
-      const parsedCreatedAt = parseBackupDate(obj.creation_date);
-      const parsedUpdatedAt = parseBackupDate(obj.update_date);
-
-      const createdAt = parsedCreatedAt !== null ? parsedCreatedAt : Date.now();
-      const updatedAt = parsedUpdatedAt !== null ? parsedUpdatedAt : createdAt;
-
-      const plainText = String(obj.text || "");
-      const contentAsHtml = plainText.replace(/\n/g, "<br>");
-
-      return {
-        id: String(obj._id || createdAt + Math.random()),
-        content: contentAsHtml,
-        createdAt,
-        updatedAt,
-        isPinned: Boolean(obj.ear === 1),
-        color: "text-slate-800 dark:text-slate-200",
-        font: "font-sans",
-        fontSize: "text-lg",
-      };
-    });
-
-    console.log(`[MimiNote] ✅ ${notes.length}件のノートを正常に変換しました`);
-    db.close();
-    return notes;
-  } catch (err: any) {
-    console.error("ミミノートの解析中にエラー:", err);
-    if (err.message.includes("SQL.js")) {
-      throw err;
-    }
-    throw new Error(
-      `バックアップファイルの解析に失敗しました。ファイル形式が不正か、破損している可能性があります。`
-    );
-  }
-}
-
 // --- Main App Component ---
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -728,13 +637,11 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [noteIdToDelete, setNoteIdToDelete] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(
     new Set()
   );
-  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [toastMessage, setToastMessage] = useState("");
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<File | null>(
@@ -747,8 +654,10 @@ export default function App() {
   const [showBackupBadge, setShowBackupBadge] = useState(false);
   const [sortByPin, setSortByPin] = useState(true);
   const [startVoiceOnMount, setStartVoiceOnMount] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] =
+    useState<DeleteConfirmation | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
@@ -756,9 +665,7 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
   const isInitialPinnedIdsMount = useRef(true);
-  const selectionRangeRef = useRef<Range | null>(null);
   const settingsContainerRef = useRef<HTMLDivElement>(null);
-  const lastRenderedNoteId = useRef<string | null>(null);
 
   const activeNote = useMemo(
     () => notes.find((note) => note.id === activeNoteId),
@@ -767,94 +674,58 @@ export default function App() {
   const activeNoteRef = useRef(activeNote);
   activeNoteRef.current = activeNote;
 
-  // 起動時のローディング画面をフェードアウトさせる
   useEffect(() => {
     const loadingOverlay = document.getElementById("loading-overlay");
     if (loadingOverlay) {
-      // フェードアウト用のクラスを追加
       loadingOverlay.classList.add("fade-out");
-      // アニメーション完了後にDOMから削除
-      setTimeout(() => {
-        loadingOverlay.remove();
-      }, 500); // CSSのtransition durationと一致させる
-    }
-  }, []); // 空の依存配列で初回マウント時のみ実行
-
-  // Load notes from localStorage on initial render
-  useEffect(() => {
-    try {
-      const savedNotes = localStorage.getItem("nana-memo-notes");
-      if (savedNotes) {
-        setNotes(JSON.parse(savedNotes));
-      }
-    } catch (error) {
-      console.error("Failed to load notes from localStorage", error);
+      setTimeout(() => loadingOverlay.remove(), 500);
     }
   }, []);
 
-  // Save notes to localStorage whenever they change (Auto-save)
+  useEffect(() => {
+    try {
+      const savedNotes = localStorage.getItem("nana-memo-notes");
+      if (savedNotes) setNotes(JSON.parse(savedNotes));
+    } catch (error) {
+      console.error("Failed to load notes", error);
+    }
+  }, []);
+
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
-
-    try {
-      localStorage.setItem("nana-memo-notes", JSON.stringify(notes));
-      setSaveStatus("saved");
-      if (saveStatusTimer.current) {
-        clearTimeout(saveStatusTimer.current);
-      }
-      saveStatusTimer.current = setTimeout(() => {
-        setSaveStatus("idle");
-      }, 2000);
-    } catch (error) {
-      console.error("Failed to save notes to localStorage", error);
-    }
-
+    localStorage.setItem("nana-memo-notes", JSON.stringify(notes));
+    setSaveStatus("saved");
+    if (saveStatusTimer.current) clearTimeout(saveStatusTimer.current);
+    saveStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 2000);
     return () => {
       if (saveStatusTimer.current) clearTimeout(saveStatusTimer.current);
     };
   }, [notes]);
 
-  // Check if backup is needed whenever notes change
   useEffect(() => {
-    const checkBackupStatus = () => {
-      const lastBackupTimestamp = localStorage.getItem(
-        "nana-memo-last-backup-timestamp"
-      );
-      const lastBackupTime = lastBackupTimestamp
-        ? parseInt(lastBackupTimestamp, 10)
-        : 0;
-      const ONE_WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
-
-      const needsBackupByTime = Date.now() - lastBackupTime > ONE_WEEK_IN_MS;
-      const hasNewPin =
-        localStorage.getItem("nana-memo-new-pin-since-backup") === "true";
-
-      if (needsBackupByTime && hasNewPin) {
-        setShowBackupBadge(true);
-      } else {
-        setShowBackupBadge(false);
-      }
-    };
-    checkBackupStatus();
+    const lastBackupTime = parseInt(
+      localStorage.getItem("nana-memo-last-backup-timestamp") || "0",
+      10
+    );
+    const needsBackupByTime =
+      Date.now() - lastBackupTime > 7 * 24 * 60 * 60 * 1000;
+    const hasNewPin =
+      localStorage.getItem("nana-memo-new-pin-since-backup") === "true";
+    setShowBackupBadge(needsBackupByTime && hasNewPin);
   }, [notes]);
 
-  // --- Notification Pinning Logic ---
   useEffect(() => {
     try {
       const savedPinnedIds = localStorage.getItem(
         "nana-memo-pinned-notification-ids"
       );
-      if (savedPinnedIds) {
+      if (savedPinnedIds)
         setPinnedToNotificationIds(new Set(JSON.parse(savedPinnedIds)));
-      }
     } catch (error) {
-      console.error(
-        "Failed to load pinned notification IDs from localStorage",
-        error
-      );
+      console.error("Failed to load pinned notification IDs", error);
     }
   }, []);
 
@@ -863,139 +734,115 @@ export default function App() {
       isInitialPinnedIdsMount.current = false;
       return;
     }
-    try {
-      localStorage.setItem(
-        "nana-memo-pinned-notification-ids",
-        JSON.stringify(Array.from(pinnedToNotificationIds))
-      );
-    } catch (error) {
-      console.error(
-        "Failed to save pinned notification IDs to localStorage",
-        error
-      );
-    }
+    localStorage.setItem(
+      "nana-memo-pinned-notification-ids",
+      JSON.stringify(Array.from(pinnedToNotificationIds))
+    );
   }, [pinnedToNotificationIds]);
 
   useEffect(() => {
     const syncNotifications = async () => {
       if (!("serviceWorker" in navigator) || !("Notification" in window))
         return;
-
       try {
         const registration = await navigator.serviceWorker.ready;
         const notifications = await registration.getNotifications();
-        const activeNotificationIds = new Set(
-          notifications.map((n) => n.data?.noteId).filter(Boolean)
+        setPinnedToNotificationIds(
+          new Set(notifications.map((n) => n.data?.noteId).filter(Boolean))
         );
-        setPinnedToNotificationIds(activeNotificationIds);
       } catch (error) {
-        console.error("Failed to sync notifications on load:", error);
+        console.error("Failed to sync notifications:", error);
       }
     };
-
     const timer = setTimeout(syncNotifications, 500);
     return () => clearTimeout(timer);
   }, []);
 
-  // Handle dark mode
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    document.documentElement.classList.toggle("dark", isDarkMode);
   }, [isDarkMode]);
 
-  // PWA Install Prompt
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e);
     };
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    return () => {
+    return () =>
       window.removeEventListener(
         "beforeinstallprompt",
         handleBeforeInstallPrompt
       );
-    };
   }, []);
 
-  const handleVoiceInput = useCallback(() => {
-    const recognition = recognitionRef.current;
-    if (!recognition) {
-      setToastMessage("音声認識はこのブラウザではサポートされていません。");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-      return;
-    }
-
-    if (isListening) {
-      recognition.stop();
-      setIsListening(false);
-    } else {
-      try {
-        recognition.start();
-      } catch (e) {
-        console.error("Could not start recognition", e);
-      }
-    }
-  }, [isListening]);
-
-  // Focus editor when a note is opened and sync content
-  useEffect(() => {
-    if (activeNote && editorRef.current) {
-      if (lastRenderedNoteId.current !== activeNote.id) {
-        editorRef.current.innerHTML = activeNote.content;
-        lastRenderedNoteId.current = activeNote.id;
-      }
-      editorRef.current.focus();
-
-      if (startVoiceOnMount) {
-        handleVoiceInput();
-        setStartVoiceOnMount(false);
-      }
-    } else {
-      lastRenderedNoteId.current = null;
-    }
-    document.execCommand("styleWithCSS", false, "true");
-  }, [activeNote, startVoiceOnMount, handleVoiceInput]);
-
-  // Handle deep-linking from notifications
   useEffect(() => {
     if (notes.length === 0) return;
-
     const params = new URLSearchParams(window.location.search);
     const noteId = params.get("noteId");
-    if (noteId && notes.find((n) => n.id === noteId)) {
+    if (noteId && notes.some((n) => n.id === noteId)) {
       setActiveNoteId(noteId);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [notes]);
 
-  // Handle closing settings menu on outside click
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        settingsContainerRef.current &&
-        !settingsContainerRef.current.contains(event.target as Node)
-      ) {
-        setShowSettings(false);
-      }
-    };
+  const showToast = useCallback((message: string, duration: number = 3000) => {
+    setToastMessage(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMessage(""), duration);
+  }, []);
 
-    if (showSettings) {
-      document.addEventListener("mousedown", handleClickOutside);
+  const handleVoiceInput = useCallback(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast("音声認識はこのブラウザではサポートされていません。");
+      return;
+    }
+    if (!recognitionRef.current) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "ja-JP";
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        if (event.error === "not-allowed")
+          showToast("マイクの使用が許可されていません");
+        setIsListening(false);
+      };
+      recognition.onresult = (event: any) => {
+        let finalTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal)
+            finalTranscript += event.results[i][0].transcript;
+        }
+        if (finalTranscript && activeNoteRef.current) {
+          const currentNote = activeNoteRef.current;
+          const separator =
+            getPlainText(currentNote.content).trim().length > 0 ? " " : "";
+          updateNote(currentNote.id, {
+            content: currentNote.content + separator + finalTranscript,
+          });
+        }
+      };
+      recognitionRef.current = recognition;
     }
 
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showSettings]);
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error("Could not start recognition", e);
+      }
+    }
+  }, [isListening, showToast]);
 
   const filteredNotes = useMemo(() => {
     const sortedByDate = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
-
     const applySearchFilter = (arr: Note[]) =>
       searchTerm
         ? arr.filter((n) =>
@@ -1004,14 +851,12 @@ export default function App() {
               .includes(searchTerm.toLowerCase())
           )
         : arr;
-
     if (sortByPin) {
       const pinned = sortedByDate.filter((n) => n.isPinned);
       const unpinned = sortedByDate.filter((n) => !n.isPinned);
       return [...applySearchFilter(pinned), ...applySearchFilter(unpinned)];
-    } else {
-      return applySearchFilter(sortedByDate);
     }
+    return applySearchFilter(sortedByDate);
   }, [notes, searchTerm, sortByPin]);
 
   const createNote = (startWithVoice = false) => {
@@ -1026,9 +871,7 @@ export default function App() {
       fontSize: "text-lg",
     };
     setNotes((prevNotes) => [newNote, ...prevNotes]);
-    if (startWithVoice) {
-      setStartVoiceOnMount(true);
-    }
+    if (startWithVoice) setStartVoiceOnMount(true);
     setActiveNoteId(newNote.id);
   };
 
@@ -1045,8 +888,7 @@ export default function App() {
 
   const handleCloseEditor = () => {
     if (activeNote) {
-      const plainText = getPlainText(activeNote.content).trim();
-      if (plainText === "") {
+      if (getPlainText(activeNote.content).trim() === "") {
         setNotes((prevNotes) =>
           prevNotes.filter((note) => note.id !== activeNote.id)
         );
@@ -1054,6 +896,576 @@ export default function App() {
     }
     setActiveNoteId(null);
   };
+
+  const unpinFromNotification = useCallback(
+    async (noteId: string, showToastOnSuccess = true) => {
+      setPinnedToNotificationIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(noteId);
+        return newSet;
+      });
+      if (!("serviceWorker" in navigator)) return;
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const notifications = await registration.getNotifications({
+          tag: `note-${noteId}`,
+        });
+        notifications.forEach((notification) => notification.close());
+        if (showToastOnSuccess) showToast("通知の設定を解除しました。", 2000);
+      } catch (error) {
+        console.error("Failed to unpin notification:", error);
+        setPinnedToNotificationIds((prev) => new Set(prev).add(noteId));
+        if (showToastOnSuccess) showToast("通知の解除に失敗しました。");
+      }
+    },
+    [showToast]
+  );
+
+  const handleConfirmDelete = () => {
+    if (!deleteConfirmation) return;
+    const { ids } = deleteConfirmation;
+    setNotes((notes) => notes.filter((note) => !ids.includes(note.id)));
+    ids.forEach((id) => unpinFromNotification(id, false));
+    if (ids.includes(activeNoteId || "")) setActiveNoteId(null);
+    setDeleteConfirmation(null);
+    showToast(`${ids.length}件のメモを削除しました。`, 2000);
+  };
+
+  const handleBackup = () => {
+    const formattedDate = new Date()
+      .toISOString()
+      .slice(0, 10)
+      .replace(/-/g, "");
+    const filename = `nanamemo_backup_${formattedDate}.json`;
+    const dataStr = JSON.stringify(notes, null, 2);
+    const linkElement = document.createElement("a");
+    linkElement.href =
+      "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
+    linkElement.download = filename;
+    linkElement.click();
+    localStorage.setItem(
+      "nana-memo-last-backup-timestamp",
+      Date.now().toString()
+    );
+    localStorage.removeItem("nana-memo-new-pin-since-backup");
+    setShowBackupBadge(false);
+    setShowSettings(false);
+    showToast("バックアップファイルを保存しました。");
+  };
+
+  const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setShowRestoreConfirm(file);
+      setShowSettings(false);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const proceedWithRestore = async (file: File | null) => {
+    if (!file) return;
+    setShowRestoreConfirm(null);
+    try {
+      let importedNotes: Note[] = [];
+      const fileName = file.name.toLowerCase();
+      if (fileName.endsWith(".json")) {
+        const parsedData = JSON.parse(await file.text());
+        if (
+          Array.isArray(parsedData) &&
+          parsedData.length > 0 &&
+          "content" in parsedData[0]
+        ) {
+          importedNotes = parsedData.map((n: any) => ({
+            ...n,
+            isPinned: n.isPinned || false,
+            color: n.color || "text-slate-800 dark:text-slate-200",
+            font: n.font || "font-sans",
+            fontSize: n.fontSize || "text-lg",
+          }));
+        } else {
+          throw new Error("無効なJSONファイル形式です。");
+        }
+      } else if (fileName.endsWith(".mimibk")) {
+        importedNotes = await parseMimiNoteBackup(file);
+      } else {
+        throw new Error("サポートされていないファイル形式です。");
+      }
+      setNotes(importedNotes);
+      showToast(
+        importedNotes.length > 0
+          ? `${importedNotes.length}件のメモを復元しました。`
+          : "空のバックアップを復元しました。"
+      );
+    } catch (error: any) {
+      showToast(`復元に失敗しました: ${error.message}`, 4000);
+      console.error("Failed to restore notes:", error);
+    }
+  };
+
+  if (activeNote) {
+    return (
+      <NoteEditor
+        note={activeNote}
+        isDarkMode={isDarkMode}
+        pinnedToNotificationIds={pinnedToNotificationIds}
+        saveStatus={saveStatus}
+        isListening={isListening}
+        onUpdate={updateNote}
+        onClose={handleCloseEditor}
+        onDelete={(id) =>
+          setDeleteConfirmation({
+            ids: [id],
+            preview: getPlainText(activeNote.content),
+          })
+        }
+        setPinnedToNotificationIds={setPinnedToNotificationIds}
+        showToast={showToast}
+        onVoiceInput={handleVoiceInput}
+        startVoiceOnMount={startVoiceOnMount}
+        setStartVoiceOnMount={setStartVoiceOnMount}
+      />
+    );
+  }
+
+  // Render Main List/Calendar View
+  return (
+    <>
+      <NoteList
+        notes={filteredNotes}
+        isDarkMode={isDarkMode}
+        setIsDarkMode={setIsDarkMode}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        showSearchBar={showSearchBar}
+        setShowSearchBar={setShowSearchBar}
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+        installPrompt={installPrompt}
+        handleBackup={handleBackup}
+        handleRestore={handleRestore}
+        fileInputRef={fileInputRef}
+        settingsContainerRef={settingsContainerRef}
+        showBackupBadge={showBackupBadge}
+        sortByPin={sortByPin}
+        setSortByPin={setSortByPin}
+        isSelectionMode={isSelectionMode}
+        setIsSelectionMode={setIsSelectionMode}
+        selectedNoteIds={selectedNoteIds}
+        setSelectedNoteIds={setSelectedNoteIds}
+        onDelete={(ids, preview) => setDeleteConfirmation({ ids, preview })}
+        unpinFromNotification={unpinFromNotification}
+        showToast={showToast}
+        onUpdateNotes={setNotes}
+        onSetActiveNoteId={setActiveNoteId}
+        longPressTimer={longPressTimer}
+        longPressTriggered={longPressTriggered}
+        createNote={createNote}
+      />
+      <DeleteConfirmationModal
+        confirmation={deleteConfirmation}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteConfirmation(null)}
+      />
+      {showRestoreConfirm && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowRestoreConfirm(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center mb-4">
+              メモの復元
+            </h2>
+            <p className="text-slate-600 dark:text-slate-300 mb-6 text-center">
+              バックアップから復元しますか？
+              <br />
+              現在のメモはすべて上書きされます。
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowRestoreConfirm(null)}
+                className="px-4 py-2 rounded-md border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => proceedWithRestore(showRestoreConfirm)}
+                className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-blue-500"
+              >
+                復元
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div
+        className={`fixed top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full text-sm shadow-lg z-50 transition-opacity duration-300 ${
+          toastMessage ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        {toastMessage}
+      </div>
+    </>
+  );
+}
+
+// --- NoteList Component ---
+const NoteList: React.FC<any> = ({
+  notes,
+  isDarkMode,
+  setIsDarkMode,
+  searchTerm,
+  setSearchTerm,
+  showSearchBar,
+  setShowSearchBar,
+  showSettings,
+  setShowSettings,
+  installPrompt,
+  handleBackup,
+  handleRestore,
+  fileInputRef,
+  settingsContainerRef,
+  showBackupBadge,
+  sortByPin,
+  setSortByPin,
+  isSelectionMode,
+  setIsSelectionMode,
+  selectedNoteIds,
+  setSelectedNoteIds,
+  onDelete,
+  unpinFromNotification,
+  showToast,
+  onUpdateNotes,
+  onSetActiveNoteId,
+  longPressTimer,
+  longPressTriggered,
+  createNote,
+}) => {
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedNoteIds(new Set());
+  };
+
+  const toggleNoteSelection = (noteId: string) => {
+    const newSelection = new Set(selectedNoteIds);
+    newSelection.has(noteId)
+      ? newSelection.delete(noteId)
+      : newSelection.add(noteId);
+    newSelection.size === 0
+      ? exitSelectionMode()
+      : setSelectedNoteIds(newSelection);
+  };
+
+  const handlePointerDown = useCallback(
+    (noteId: string) => {
+      longPressTriggered.current = false;
+      longPressTimer.current = setTimeout(() => {
+        if (!isSelectionMode) setIsSelectionMode(true);
+        setSelectedNoteIds((prev: Set<string>) => new Set(prev).add(noteId));
+        longPressTriggered.current = true;
+      }, 500);
+    },
+    [
+      isSelectionMode,
+      longPressTimer,
+      longPressTriggered,
+      setIsSelectionMode,
+      setSelectedNoteIds,
+    ]
+  );
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  }, [longPressTimer]);
+
+  const handleClick = useCallback(
+    (noteId: string) => {
+      if (longPressTriggered.current) return;
+      isSelectionMode ? toggleNoteSelection(noteId) : onSetActiveNoteId(noteId);
+    },
+    [
+      isSelectionMode,
+      toggleNoteSelection,
+      onSetActiveNoteId,
+      longPressTriggered,
+    ]
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, noteId: string) => {
+      e.preventDefault();
+      if (!isSelectionMode) setIsSelectionMode(true);
+      setSelectedNoteIds((prev: Set<string>) => new Set(prev).add(noteId));
+    },
+    [isSelectionMode, setIsSelectionMode, setSelectedNoteIds]
+  );
+
+  const confirmBulkDelete = () => {
+    onDelete(Array.from(selectedNoteIds));
+    exitSelectionMode();
+  };
+
+  const handleBulkPin = () => {
+    const shouldPin = notes.some(
+      (note: Note) => selectedNoteIds.has(note.id) && !note.isPinned
+    );
+    if (shouldPin)
+      localStorage.setItem("nana-memo-new-pin-since-backup", "true");
+    onUpdateNotes((currentNotes: Note[]) =>
+      currentNotes.map((note) =>
+        selectedNoteIds.has(note.id)
+          ? { ...note, isPinned: shouldPin, updatedAt: Date.now() }
+          : note
+      )
+    );
+    exitSelectionMode();
+  };
+
+  const handleInstallClick = () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    installPrompt.userChoice.then((choiceResult: { outcome: string }) => {
+      if (choiceResult.outcome === "accepted")
+        console.log("User accepted the A2HS prompt");
+      setShowSettings(false);
+    });
+  };
+
+  const currentMonthNoteCount = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    return notes.filter((note: Note) => {
+      const noteDate = new Date(note.updatedAt);
+      return noteDate.getFullYear() === year && noteDate.getMonth() === month;
+    }).length;
+  }, [notes]);
+
+  return (
+    <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
+      <header className="flex items-center justify-between p-4 border-b border-amber-200 dark:border-slate-700">
+        {isSelectionMode ? (
+          <>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={exitSelectionMode}
+                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <CloseIcon className="w-6 h-6" />
+              </button>
+              <span className="font-bold text-lg text-slate-900 dark:text-white">
+                {selectedNoteIds.size}件選択中
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleBulkPin}
+                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <BookmarkIcon className="w-6 h-6" isFilled={true} />
+              </button>
+              <button
+                onClick={confirmBulkDelete}
+                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <TrashIcon className="w-6 h-6" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center space-x-2">
+              <RabbitIcon className="w-8 h-8 text-rose-500 dark:text-rose-400" />
+              <h1 className="text-2xl font-dela text-rose-500 dark:text-rose-400">
+                nanamemo
+              </h1>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setSortByPin((prev: boolean) => !prev)}
+                className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
+                  sortByPin
+                    ? "text-rose-500 dark:text-rose-400"
+                    : "text-slate-600 dark:text-slate-400"
+                }`}
+                title={
+                  sortByPin ? "ピン留め優先ソート中" : "更新日時順ソート中"
+                }
+              >
+                <BookmarkIcon className="w-6 h-6" isFilled={true} />
+              </button>
+              <button
+                onClick={() => {
+                  if (showSearchBar) setSearchTerm("");
+                  setShowSearchBar(!showSearchBar);
+                }}
+                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <SearchIcon className="w-6 h-6" />
+              </button>
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
+              </button>
+              <div className="relative" ref={settingsContainerRef}>
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="relative p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <CogIcon className="w-6 h-6" />
+                  {showBackupBadge && (
+                    <span className="absolute top-1 right-1 block w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-amber-50 dark:ring-slate-800"></span>
+                  )}
+                </button>
+                {showSettings && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
+                    {installPrompt && (
+                      <button
+                        onClick={handleInstallClick}
+                        className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        <InstallIcon className="w-4 h-4" />
+                        <span>アプリをインストール</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={handleBackup}
+                      className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
+                      <DownloadIcon className="w-4 h-4" />
+                      <span>今すぐバックアップ</span>
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
+                      <UploadIcon className="w-4 h-4" />
+                      <span>復元</span>
+                    </button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleRestore}
+                      accept=".json,.mimibk"
+                      className="hidden"
+                    />
+                    <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
+                    <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
+                      ヒント:
+                      Safariでは「共有」→「ホーム画面に追加」でインストールできます。
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </header>
+      {showSearchBar ? (
+        <div className="p-4 border-b border-amber-200 dark:border-slate-700">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="メモを検索..."
+              className="w-full pl-10 pr-4 py-2 rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-400"
+              autoFocus
+            />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex justify-between items-baseline px-4 pt-2 text-slate-500 dark:text-slate-400">
+            <h2 className="text-2xl font-kiwi font-bold">
+              {new Date().getFullYear()} /{" "}
+              {String(new Date().getMonth() + 1).padStart(2, "0")}
+            </h2>
+            <span className="text-sm font-medium">
+              {currentMonthNoteCount}件のメモ
+            </span>
+          </div>
+          <RabbitBorder isDarkMode={isDarkMode} />
+        </>
+      )}
+      <main className="flex-grow p-4 overflow-y-auto">
+        {notes.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {notes.map((note: Note) => (
+              <NoteItem
+                key={note.id}
+                note={note}
+                isSelected={selectedNoteIds.has(note.id)}
+                isSelectionMode={isSelectionMode}
+                onClick={handleClick}
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+                onContextMenu={handleContextMenu}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <RabbitIcon className="w-24 h-24 text-slate-300 dark:text-slate-600 mb-4" />
+            <p className="text-slate-400 dark:text-slate-500">
+              {searchTerm ? "メモが見つかりません。" : "メモメモ、書き書き！"}
+            </p>
+          </div>
+        )}
+      </main>
+      {!isSelectionMode && (
+        <footer className="flex-shrink-0 p-4 border-t border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => createNote()}
+              className="flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
+            >
+              <PlusIcon className="w-8 h-8 text-slate-600 dark:text-slate-200" />
+            </button>
+            <button
+              onClick={() => createNote()}
+              className="flex-grow h-16 text-left px-6 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors text-lg"
+            >
+              メモを入力...
+            </button>
+            <button
+              onClick={() => createNote(true)}
+              className="flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
+            >
+              <MicrophoneIcon className="w-8 h-8 text-slate-600 dark:text-slate-200" />
+            </button>
+          </div>
+        </footer>
+      )}
+    </div>
+  );
+};
+
+// --- NoteEditor Component ---
+const NoteEditor: React.FC<any> = ({
+  note,
+  isDarkMode,
+  pinnedToNotificationIds,
+  setPinnedToNotificationIds,
+  saveStatus,
+  isListening,
+  onUpdate,
+  onClose,
+  onDelete,
+  showToast,
+  onVoiceInput,
+  startVoiceOnMount,
+  setStartVoiceOnMount,
+}) => {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const selectionRangeRef = useRef<Range | null>(null);
+  const lastRenderedNoteId = useRef<string | null>(null);
 
   const saveSelection = useCallback(() => {
     const selection = window.getSelection();
@@ -1067,1204 +1479,297 @@ export default function App() {
 
   useEffect(() => {
     document.addEventListener("selectionchange", saveSelection);
-    return () => {
-      document.removeEventListener("selectionchange", saveSelection);
-    };
+    return () => document.removeEventListener("selectionchange", saveSelection);
   }, [saveSelection]);
 
-  const applyColor = useCallback(
-    (colorClass: string) => {
-      if (
-        selectionRangeRef.current &&
-        selectionRangeRef.current.toString().length > 0
-      ) {
-        editorRef.current?.focus();
-
-        const selection = window.getSelection();
-        if (selection) {
-          selection.removeAllRanges();
-          selection.addRange(selectionRangeRef.current);
-        }
-
-        const map = isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT;
-        const colorHex = map[colorClass];
-
-        if (colorHex) {
-          document.execCommand("foreColor", false, colorHex);
-          saveSelection();
-          editorRef.current?.dispatchEvent(
-            new Event("input", { bubbles: true, cancelable: true })
-          );
-        }
-      } else {
-        if (activeNoteId) {
-          updateNote(activeNoteId, { color: colorClass });
-        }
-      }
-    },
-    [activeNoteId, saveSelection, updateNote, isDarkMode]
-  );
-
-  const applyFontSize = useCallback(
-    (sizeClass: string) => {
-      if (
-        selectionRangeRef.current &&
-        selectionRangeRef.current.toString().length > 0
-      ) {
-        editorRef.current?.focus();
-        const selection = window.getSelection();
-        if (selection) {
-          selection.removeAllRanges();
-          selection.addRange(selectionRangeRef.current);
-        }
-
-        const sizeCommand = FONT_SIZE_COMMAND_MAP[sizeClass];
-        if (sizeCommand) {
-          document.execCommand("fontSize", false, sizeCommand);
-          saveSelection();
-          editorRef.current?.dispatchEvent(
-            new Event("input", { bubbles: true, cancelable: true })
-          );
-        }
-      } else {
-        if (activeNoteId) {
-          updateNote(activeNoteId, { fontSize: sizeClass });
-        }
-      }
-    },
-    [activeNoteId, updateNote, saveSelection]
-  );
-
-  // Setup Speech Recognition
   useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition not supported by this browser.");
-      return;
+    if (editorRef.current) {
+      if (lastRenderedNoteId.current !== note.id) {
+        editorRef.current.innerHTML = note.content;
+        lastRenderedNoteId.current = note.id;
+      }
+      editorRef.current.focus();
+      if (startVoiceOnMount) {
+        onVoiceInput();
+        setStartVoiceOnMount(false);
+      }
     }
+    document.execCommand("styleWithCSS", false, "true");
+  }, [note, startVoiceOnMount, onVoiceInput, setStartVoiceOnMount]);
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "ja-JP";
-
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error", event.error);
-      if (event.error === "not-allowed") {
-        setToastMessage("マイクの使用が許可されていません");
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
+  const applyStyle = (command: string, value?: string) => {
+    if (
+      selectionRangeRef.current &&
+      selectionRangeRef.current.toString().length > 0
+    ) {
+      editorRef.current?.focus();
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(selectionRangeRef.current);
       }
-      setIsListening(false);
-    };
-
-    recognition.onresult = (event: any) => {
-      let finalTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-
-      if (finalTranscript && activeNoteRef.current) {
-        const currentNote = activeNoteRef.current;
-        const existingContent = currentNote.content;
-        const separator =
-          getPlainText(existingContent).trim().length > 0 ? " " : "";
-        const newContent = existingContent + separator + finalTranscript;
-
-        updateNote(currentNote.id, { content: newContent });
-      }
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      recognition.stop();
-    };
-  }, [updateNote]);
-
-  const requestDeleteNote = (id: string) => {
-    setNoteIdToDelete(id);
+      document.execCommand(command, false, value);
+      saveSelection();
+      editorRef.current?.dispatchEvent(
+        new Event("input", { bubbles: true, cancelable: true })
+      );
+    }
   };
 
-  const confirmDeleteNote = () => {
-    if (!noteIdToDelete) return;
-    setNotes(notes.filter((note) => note.id !== noteIdToDelete));
-    if (activeNoteId === noteIdToDelete) {
-      setActiveNoteId(null);
+  const applyColor = (colorClass: string) => {
+    if (
+      selectionRangeRef.current &&
+      selectionRangeRef.current.toString().length > 0
+    ) {
+      applyStyle(
+        "foreColor",
+        (isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT)[colorClass]
+      );
+    } else {
+      onUpdate(note.id, { color: colorClass });
     }
-    unpinFromNotification(noteIdToDelete, false);
-    setNoteIdToDelete(null);
-    setToastMessage("メモを削除しました。");
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
   };
 
-  const pinToNotification = async (note: Note) => {
-    if (!("serviceWorker" in navigator)) return;
+  const applyFontSize = (sizeClass: string) => {
+    if (
+      selectionRangeRef.current &&
+      selectionRangeRef.current.toString().length > 0
+    ) {
+      applyStyle("fontSize", FONT_SIZE_COMMAND_MAP[sizeClass]);
+    } else {
+      onUpdate(note.id, { fontSize: sizeClass });
+    }
+  };
 
-    const plainTextContent = (getPlainText(note.content) || "").trim();
-    const lines = plainTextContent.split("\n");
-    const title = lines[0]?.substring(0, 50) || "nana memo";
-    const body = lines.slice(1).join("\n").substring(0, 100) || "メモを表示";
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-
-      registration.active?.postMessage({
-        type: "SHOW_NOTE_NOTIFICATION",
-        payload: {
-          title,
-          body,
-          noteId: note.id,
-        },
-      });
-
-      setToastMessage("通知に固定しました");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
-    } catch (err) {
-      console.error("通知送信失敗:", err);
-
-      setPinnedToNotificationIds((prev) => {
+  const handleToggleNotificationPin = async () => {
+    if (!("serviceWorker" in navigator) || !("Notification" in window)) {
+      return showToast("通知機能はこのブラウザではサポートされていません。");
+    }
+    if (Notification.permission === "denied") {
+      return showToast(
+        "通知がブロックされています。ブラウザの設定を変更してください。"
+      );
+    }
+    const isPinned = pinnedToNotificationIds.has(note.id);
+    if (isPinned) {
+      setPinnedToNotificationIds((prev: Set<string>) => {
         const newSet = new Set(prev);
         newSet.delete(note.id);
         return newSet;
       });
-
-      setToastMessage("通知の表示に失敗しました");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-    }
-  };
-
-  const unpinFromNotification = async (noteId: string, showToast = true) => {
-    setPinnedToNotificationIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(noteId);
-      return newSet;
-    });
-
-    if (!("serviceWorker" in navigator)) return;
-
-    try {
       const registration = await navigator.serviceWorker.ready;
       const notifications = await registration.getNotifications({
-        tag: `note-${noteId}`,
+        tag: `note-${note.id}`,
       });
-      notifications.forEach((notification) => notification.close());
-      if (showToast) {
-        setToastMessage("通知の設定を解除しました。");
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
-      }
-    } catch (error) {
-      console.error(
-        "Failed to unpin notification:",
-        error instanceof Error ? error.stack || error.message : String(error)
-      );
-      setPinnedToNotificationIds((prev) => new Set(prev).add(noteId));
-      if (showToast) {
-        setToastMessage("通知の解除に失敗しました。");
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-      }
-    }
-  };
-
-  const handleToggleNotificationPin = async (note: Note) => {
-    if (!("serviceWorker" in navigator) || !("Notification" in window)) {
-      setToastMessage("通知機能はこのブラウザではサポートされていません。");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-      return;
-    }
-
-    if (Notification.permission === "denied") {
-      setToastMessage(
-        "通知がブロックされています。ブラウザの設定を変更してください。"
-      );
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-      return;
-    }
-
-    if (pinnedToNotificationIds.has(note.id)) {
-      await unpinFromNotification(note.id);
+      notifications.forEach((n) => n.close());
+      showToast("通知の設定を解除しました。", 2000);
     } else {
-      setPinnedToNotificationIds((prev) => new Set(prev).add(note.id));
-
       const permission = await Notification.requestPermission();
       if (permission === "granted") {
-        await pinToNotification(note);
-      } else {
-        setToastMessage("通知が許可されませんでした。");
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-
-        setPinnedToNotificationIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(note.id);
-          return newSet;
+        setPinnedToNotificationIds((prev: Set<string>) =>
+          new Set(prev).add(note.id)
+        );
+        const plainText = (getPlainText(note.content) || "").trim();
+        const lines = plainText.split("\n");
+        const registration = await navigator.serviceWorker.ready;
+        registration.active?.postMessage({
+          type: "SHOW_NOTE_NOTIFICATION",
+          payload: {
+            title: lines[0]?.substring(0, 50) || "nana memo",
+            body: lines.slice(1).join("\n").substring(0, 100) || "メモを表示",
+            noteId: note.id,
+          },
         });
+        showToast("通知に固定しました", 2000);
+      } else {
+        showToast("通知が許可されませんでした。");
       }
     }
   };
 
-  const handleInstallClick = () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    installPrompt.userChoice.then((choiceResult: { outcome: string }) => {
-      if (choiceResult.outcome === "accepted") {
-        console.log("User accepted the A2HS prompt");
-      } else {
-        console.log("User dismissed the A2HS prompt");
-      }
-      setInstallPrompt(null);
-      setShowSettings(false);
-    });
-  };
-
-  const handleBackup = () => {
-    const today = new Date();
-    const formattedDate = `${today.getFullYear()}${String(
-      today.getMonth() + 1
-    ).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
-    const filename = `nanamemo_backup_${formattedDate}.json`;
-
-    const dataStr = JSON.stringify(notes, null, 2);
-    const dataUri =
-      "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
-    const linkElement = document.createElement("a");
-    linkElement.setAttribute("href", dataUri);
-    linkElement.setAttribute("download", filename);
-    linkElement.click();
-
-    localStorage.setItem(
-      "nana-memo-last-backup-timestamp",
-      Date.now().toString()
-    );
-    localStorage.removeItem("nana-memo-new-pin-since-backup");
-    setShowBackupBadge(false);
-    setShowSettings(false);
-
-    setToastMessage("バックアップファイルを保存しました。");
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-  };
-
-  const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setShowRestoreConfirm(file);
-    setShowSettings(false);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-  const proceedWithRestore = async (file: File | null) => {
-    if (!file) return;
-    setShowRestoreConfirm(null);
-
-    try {
-      let importedNotes: Note[] = [];
-      const fileName = file.name.toLowerCase();
-
-      if (fileName.endsWith(".json")) {
-        const text = await file.text();
-        const parsedData = JSON.parse(text);
-        if (!Array.isArray(parsedData))
-          throw new Error("無効なJSONファイル形式です。");
-
-        if (parsedData.length > 0 && "content" in parsedData[0]) {
-          importedNotes = parsedData.map((n: any) => ({
-            id: n.id,
-            content: n.content,
-            createdAt: n.createdAt,
-            updatedAt: n.updatedAt,
-            isPinned: n.isPinned || false,
-            color: n.color || "text-slate-800 dark:text-slate-200",
-            font: n.font || "font-sans",
-            fontSize: n.fontSize || "text-lg",
-          }));
-        }
-      } else if (fileName.endsWith(".mimibk")) {
-        importedNotes = await parseMimiNoteBackup(file);
-      } else {
-        throw new Error("サポートされていないバックアップファイル形式です。");
-      }
-
-      if (importedNotes.length === 0) {
-        setNotes([]);
-        setToastMessage("空のバックアップファイルを復元しました。");
-      } else {
-        setNotes(importedNotes);
-        setToastMessage(`${importedNotes.length}件のメモを復元しました。`);
-      }
-
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 3000);
-    } catch (error) {
-      const detail = error instanceof Error ? `: ${error.message}` : "";
-      const errorMessage = `復元に失敗しました${detail}`;
-      setToastMessage(errorMessage);
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 4000);
-      console.error("Failed to restore notes:", error);
-    }
-  };
   const handleShare = async () => {
-    if (!activeNote) return;
-
-    const textToShare = getPlainText(activeNote.content);
-    if (!textToShare) {
-      setToastMessage("共有する内容がありません。");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
-      return;
-    }
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: "nanamemo",
-          text: textToShare,
-        });
-      } catch (error) {
-        console.error("共有に失敗しました:", error);
-      }
-    } else {
-      try {
-        await navigator.clipboard.writeText(textToShare);
-        setToastMessage("クリップボードにコピーしました");
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
-      } catch (error) {
-        console.error("クリップボードへのコピーに失敗しました:", error);
-        setToastMessage("コピーに失敗しました。");
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
-      }
-    }
-  };
-
-  // --- Selection Mode Logic ---
-  const exitSelectionMode = () => {
-    setIsSelectionMode(false);
-    setSelectedNoteIds(new Set());
-  };
-
-  const toggleNoteSelection = (noteId: string) => {
-    const newSelection = new Set(selectedNoteIds);
-    if (newSelection.has(noteId)) {
-      newSelection.delete(noteId);
-    } else {
-      newSelection.add(noteId);
-    }
-
-    if (newSelection.size === 0) {
-      exitSelectionMode();
-    } else {
-      setSelectedNoteIds(newSelection);
-    }
-  };
-
-  const handlePointerDown = useCallback(
-    (noteId: string) => {
-      longPressTriggered.current = false;
-      longPressTimer.current = setTimeout(() => {
-        if (!isSelectionMode) {
-          setIsSelectionMode(true);
-        }
-        setSelectedNoteIds((prev) => new Set(prev).add(noteId));
-        longPressTriggered.current = true;
-      }, 500);
-    },
-    [isSelectionMode]
-  );
-
-  const handlePointerUp = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
-  }, []);
-
-  const handleClick = useCallback(
-    (noteId: string) => {
-      if (longPressTriggered.current) {
-        return;
-      }
-      if (isSelectionMode) {
-        toggleNoteSelection(noteId);
+    const textToShare = getPlainText(note.content);
+    if (!textToShare) return showToast("共有する内容がありません。", 2000);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "nanamemo", text: textToShare });
       } else {
-        setActiveNoteId(noteId);
+        await navigator.clipboard.writeText(textToShare);
+        showToast("クリップボードにコピーしました", 2000);
       }
-    },
-    [isSelectionMode, toggleNoteSelection]
-  );
-
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, noteId: string) => {
-      e.preventDefault();
-      if (!isSelectionMode) {
-        setIsSelectionMode(true);
-      }
-      setSelectedNoteIds((prev) => new Set(prev).add(noteId));
-    },
-    [isSelectionMode]
-  );
-  const confirmBulkDelete = () => {
-    const idsToDelete = Array.from(selectedNoteIds);
-    setNotes((notes) => notes.filter((note) => !idsToDelete.includes(note.id)));
-    idsToDelete.forEach((id) => unpinFromNotification(String(id), false));
-    setShowBulkDeleteConfirm(false);
-    exitSelectionMode();
-    setToastMessage(`${idsToDelete.length}件のメモを削除しました。`);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToastMessage(""), 2000);
-  };
-  const handleBulkPin = () => {
-    const shouldPin = notes.some(
-      (note) => selectedNoteIds.has(note.id) && !note.isPinned
-    );
-    if (shouldPin) {
-      localStorage.setItem("nana-memo-new-pin-since-backup", "true");
+    } catch (error) {
+      console.error("Share failed:", error);
+      showToast("共有/コピーに失敗しました。", 2000);
     }
-    setNotes((currentNotes) =>
-      currentNotes.map((note) =>
-        selectedNoteIds.has(note.id)
-          ? { ...note, isPinned: shouldPin, updatedAt: Date.now() }
-          : note
-      )
-    );
-    exitSelectionMode();
-  };
-
-  // --- Calendar View Logic ---
-
-  const notesByDate = useMemo(() => {
-    const map = new Map<string, Note[]>();
-    notes.forEach((note) => {
-      const dateStr = new Date(note.createdAt).toISOString().split("T")[0];
-      if (!map.has(dateStr)) {
-        map.set(dateStr, []);
-      }
-      map.get(dateStr)!.push(note);
-    });
-    return map;
-  }, [notes]);
-
-  const notesForSelectedDay = useMemo(() => {
-    if (!selectedDate) return [];
-    const dateStr = selectedDate.toISOString().split("T")[0];
-    return notesByDate.get(dateStr) || [];
-  }, [selectedDate, notesByDate]);
-
-  const calendarDays = useMemo(() => {
-    const days = [];
-    const year = calendarDate.getFullYear();
-    const month = calendarDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const startDate = new Date(firstDay);
-    startDate.setDate(startDate.getDate() - firstDay.getDay());
-
-    for (let i = 0; i < 42; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      const dateStr = date.toISOString().split("T")[0];
-      days.push({
-        date: date,
-        isCurrentMonth: date.getMonth() === month,
-        hasNotes: notesByDate.has(dateStr),
-      });
-    }
-    return days;
-  }, [calendarDate, notesByDate]);
-
-  const RestoreConfirmModal = showRestoreConfirm && (
-    <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={() => setShowRestoreConfirm(null)}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="restore-confirm-title"
-    >
-      <div
-        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id="restore-confirm-title"
-          className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center mb-4"
-        >
-          メモの復元
-        </h2>
-        <p className="text-slate-600 dark:text-slate-300 mb-6 text-center">
-          バックアップから復元しますか？
-          <br />
-          現在のメモはすべて上書きされます。
-        </p>
-        <div className="flex justify-end space-x-3">
-          <button
-            onClick={() => setShowRestoreConfirm(null)}
-            className="px-4 py-2 rounded-md border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
-          >
-            キャンセル
-          </button>
-          <button
-            onClick={() => proceedWithRestore(showRestoreConfirm)}
-            className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-blue-500"
-          >
-            復元
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const Toast = (
-    <div
-      className={`fixed top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full text-sm shadow-lg z-50 transition-opacity duration-300 ${
-        toastMessage ? "opacity-100" : "opacity-0 pointer-events-none"
-      }`}
-    >
-      {toastMessage}
-    </div>
-  );
-
-  const currentYear = new Date().getFullYear();
-  const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
-
-  const currentMonthNoteCount = useMemo(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    return notes.filter((note) => {
-      const noteDate = new Date(note.updatedAt);
-      return noteDate.getFullYear() === year && noteDate.getMonth() === month;
-    }).length;
-  }, [notes]);
-
-  const noteToDelete = useMemo(
-    () => notes.find((note) => note.id === noteIdToDelete),
-    [notes, noteIdToDelete]
-  );
-
-  const handleConfirmDelete = () => {
-    if (showBulkDeleteConfirm) {
-      confirmBulkDelete();
-    } else if (noteIdToDelete) {
-      confirmDeleteNote();
-    }
-  };
-
-  const handleCancelDelete = () => {
-    setNoteIdToDelete(null);
-    setShowBulkDeleteConfirm(false);
-  };
-
-  const renderCurrentView = () => {
-    if (activeNote) {
-      const isPinnedToNotification = pinnedToNotificationIds.has(activeNote.id);
-      return (
-        <div
-          className={`flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300`}
-        >
-          <header className="relative flex-shrink-0 flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleCloseEditor}
-                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                <ChevronLeftIcon className="w-6 h-6" />
-              </button>
-              <div
-                className={`transition-opacity duration-500 pointer-events-none ${
-                  saveStatus === "saved" ? "opacity-100" : "opacity-0"
-                }`}
-              >
-                <div className="flex items-center space-x-1 text-sm text-slate-400 dark:text-slate-500">
-                  <CheckIcon className="w-4 h-4" />
-                  <span>保存しました</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={handleShare}
-                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                aria-label="Share note"
-              >
-                <ShareIcon className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleToggleNotificationPin(activeNote)}
-                className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
-                  isPinnedToNotification
-                    ? "text-yellow-500 dark:text-yellow-400"
-                    : ""
-                }`}
-                aria-label="Pin to notification"
-              >
-                {isPinnedToNotification ? (
-                  <BellIconFilled className="w-5 h-5" />
-                ) : (
-                  <BellIcon className="w-5 h-5" />
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  if (!activeNote.isPinned) {
-                    localStorage.setItem(
-                      "nana-memo-new-pin-since-backup",
-                      "true"
-                    );
-                  }
-                  updateNote(activeNote.id, { isPinned: !activeNote.isPinned });
-                }}
-                className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
-                  activeNote.isPinned ? "text-rose-500" : ""
-                }`}
-              >
-                <BookmarkIcon
-                  className="w-5 h-5"
-                  isFilled={activeNote.isPinned}
-                />
-              </button>
-              <button
-                onClick={() => requestDeleteNote(activeNote.id)}
-                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                <TrashIcon className="w-5 h-5" />
-              </button>
-              <button
-                onClick={handleCloseEditor}
-                className="ml-2 px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500"
-              >
-                完了
-              </button>
-            </div>
-          </header>
-
-          <div className="flex-shrink-0 flex flex-col items-center justify-center p-2 space-y-2">
-            {/* Top Row: Font and Size */}
-            <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
-              <select
-                value={activeNote.font}
-                onChange={(e) =>
-                  updateNote(activeNote.id, { font: e.target.value })
-                }
-                className="h-8 px-2 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent appearance-none"
-                aria-label="Select font"
-              >
-                {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
-                  <option key={fontClass} value={fontClass}>
-                    {fontName}
-                  </option>
-                ))}
-              </select>
-              <div className="flex items-center space-x-1 bg-amber-100 dark:bg-slate-700 rounded-full p-0.5">
-                {Object.entries(FONT_SIZE_OPTIONS).map(
-                  ([sizeClass, sizeName]) => {
-                    const isSelected = activeNote.fontSize === sizeClass;
-                    return (
-                      <button
-                        key={sizeClass}
-                        onClick={() => applyFontSize(sizeClass)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        className={`px-2 py-0.5 text-sm rounded-full transition-colors ${
-                          isSelected
-                            ? "bg-white dark:bg-slate-500 shadow-sm"
-                            : "hover:bg-amber-200/50 dark:hover:bg-slate-600/50"
-                        }`}
-                        aria-label={sizeName}
-                      >
-                        {sizeName}
-                      </button>
-                    );
-                  }
-                )}
-              </div>
-            </div>
-
-            {/* Bottom Row: Styles, Colors */}
-            <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
-              <div className="flex items-center">
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => document.execCommand("bold", false, undefined)}
-                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`}
-                  aria-label="Bold"
-                >
-                  <BoldIcon className="w-5 h-5" />
-                </button>
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() =>
-                    document.execCommand("underline", false, undefined)
-                  }
-                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`}
-                  aria-label="Underline"
-                >
-                  <UnderlineIcon className="w-5 h-5" />
-                </button>
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() =>
-                    document.execCommand("strikeThrough", false, undefined)
-                  }
-                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700`}
-                  aria-label="打ち消し線"
-                >
-                  <StrikethroughIcon className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="flex items-center space-x-2">
-                {Object.entries(COLOR_OPTIONS).map(
-                  ([colorClass, colorName]) => {
-                    const colorMap = isDarkMode
-                      ? COLOR_HEX_MAP_DARK
-                      : COLOR_HEX_MAP_LIGHT;
-                    const hexColor = colorMap[colorClass];
-                    const isSelected = activeNote.color === colorClass;
-                    return (
-                      <button
-                        key={colorClass}
-                        aria-label={colorName}
-                        title={colorName}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => applyColor(colorClass)}
-                        className={`w-6 h-6 rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 flex items-center justify-center`}
-                        style={{ backgroundColor: hexColor }}
-                      >
-                        {isSelected && (
-                          <CheckIcon className="w-4 h-4 text-white mix-blend-difference" />
-                        )}
-                      </button>
-                    );
-                  }
-                )}
-              </div>
-            </div>
-          </div>
-          <RabbitBorder isDarkMode={isDarkMode} />
-
-          <main className="flex-grow p-4 md:p-6 overflow-y-auto">
-            <div
-              ref={editorRef}
-              contentEditable={true}
-              suppressContentEditableWarning={true}
-              onInput={(e) =>
-                updateNote(activeNote.id, {
-                  content: e.currentTarget.innerHTML,
-                })
-              }
-              className={`w-full h-full bg-transparent resize-none focus:outline-none ${
-                activeNote.font
-              } ${activeNote.color} ${activeNote.fontSize || "text-lg"}`}
-              data-placeholder="メモを入力..."
-            />
-          </main>
-
-          {/* フローティングマイクボタン */}
-          <button
-            onClick={handleVoiceInput}
-            className={`fixed bottom-8 right-6 z-10 w-16 h-16 rounded-full bg-rose-500 text-white shadow-xl flex items-center justify-center transform transition-all duration-300 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-offset-4 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 ${
-              isListening ? "animate-pulse ring-4 ring-rose-400" : ""
-            }`}
-            aria-label={isListening ? "音声入力を停止" : "音声入力"}
-          >
-            <MicrophoneIcon className="w-8 h-8" />
-          </button>
-        </div>
-      );
-    }
-
-    if (viewMode === "calendar") {
-      return (
-        <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
-          <header className="flex items-center justify-between p-4 border-b border-amber-200 dark:border-slate-700">
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-              Calendar
-            </h1>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setViewMode("list")}
-                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                aria-label="List view"
-              >
-                <ListIcon className="w-6 h-6" />
-              </button>
-              <button
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                aria-label="テーマを切り替え"
-              >
-                <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
-              </button>
-            </div>
-          </header>
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <button
-                onClick={() =>
-                  setCalendarDate(
-                    new Date(
-                      calendarDate.getFullYear(),
-                      calendarDate.getMonth() - 1,
-                      1
-                    )
-                  )
-                }
-                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
-              >
-                <ChevronLeftIcon className="w-6 h-6" />
-              </button>
-              <h2 className="text-lg font-semibold">
-                {calendarDate.toLocaleString("default", { month: "long" })}{" "}
-                {calendarDate.getFullYear()}
-              </h2>
-              <button
-                onClick={() =>
-                  setCalendarDate(
-                    new Date(
-                      calendarDate.getFullYear(),
-                      calendarDate.getMonth() + 1,
-                      1
-                    )
-                  )
-                }
-                className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
-              >
-                <ChevronRightIcon className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-sm text-slate-500">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day}>{day}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1 mt-2">
-              {calendarDays.map(({ date, isCurrentMonth, hasNotes }, index) => {
-                const isToday = isSameDay(date, new Date());
-                const isSelected = selectedDate
-                  ? isSameDay(date, selectedDate)
-                  : false;
-                return (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedDate(date)}
-                    className={`relative flex items-center justify-center h-10 w-10 rounded-full transition-colors ${
-                      !isCurrentMonth
-                        ? "text-slate-400 dark:text-slate-600"
-                        : "hover:bg-amber-100 dark:hover:bg-slate-700"
-                    } ${isToday ? "bg-rose-500 text-white" : ""} ${
-                      isSelected ? "ring-2 ring-rose-500" : ""
-                    }`}
-                  >
-                    <span>{date.getDate()}</span>
-                    {hasNotes && (
-                      <div className="absolute bottom-1 h-1.5 w-1.5 bg-blue-500 rounded-full"></div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <main className="flex-grow p-4 pt-0 overflow-y-auto">
-            {selectedDate && (
-              <div>
-                <h3 className="font-semibold mb-2">
-                  Notes for{" "}
-                  {selectedDate.toLocaleDateString("ja-JP", {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </h3>
-                {notesForSelectedDay.length > 0 ? (
-                  <div className="space-y-2">
-                    {notesForSelectedDay.map((note) => (
-                      <button
-                        key={note.id}
-                        onClick={() => setActiveNoteId(note.id)}
-                        className={`block w-full text-left p-3 rounded-lg shadow bg-white dark:bg-slate-800 hover:shadow-md transition-shadow ${note.font}`}
-                      >
-                        <p
-                          className={`whitespace-pre-wrap break-words line-clamp-3 ${
-                            note.color
-                          } ${note.fontSize || "text-lg"}`}
-                        >
-                          {getPlainText(note.content) || "新規メモ"}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-slate-400 dark:text-slate-500 text-sm">
-                    No notes for this day.
-                  </p>
-                )}
-              </div>
-            )}
-          </main>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
-        <header className="flex items-center justify-between p-4 border-b border-amber-200 dark:border-slate-700">
-          {isSelectionMode ? (
-            <>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={exitSelectionMode}
-                  className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                  aria-label="Cancel selection"
-                >
-                  <CloseIcon className="w-6 h-6" />
-                </button>
-                <span className="font-bold text-lg text-slate-900 dark:text-white">
-                  {selectedNoteIds.size}件選択中
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={handleBulkPin}
-                  className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                  aria-label="Pin selected notes"
-                >
-                  <BookmarkIcon className="w-6 h-6" isFilled={true} />
-                </button>
-                <button
-                  onClick={() => setShowBulkDeleteConfirm(true)}
-                  className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                  aria-label="Delete selected notes"
-                >
-                  <TrashIcon className="w-6 h-6" />
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center space-x-2">
-                <RabbitIcon className="w-8 h-8 text-rose-500 dark:text-rose-400" />
-                <h1 className="text-2xl font-dela text-rose-500 dark:text-rose-400">
-                  nanamemo
-                </h1>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setSortByPin((prev) => !prev)}
-                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
-                    sortByPin
-                      ? "text-rose-500 dark:text-rose-400"
-                      : "text-slate-600 dark:text-slate-400"
-                  }`}
-                  aria-label="ピン留めを先頭に表示"
-                  title={
-                    sortByPin ? "ピン留め優先ソート中" : "更新日時順ソート中"
-                  }
-                >
-                  <BookmarkIcon className="w-6 h-6" isFilled={true} />
-                </button>
-                <button
-                  onClick={() => {
-                    if (showSearchBar) setSearchTerm("");
-                    setShowSearchBar(!showSearchBar);
-                  }}
-                  className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                  aria-label="Search notes"
-                >
-                  <SearchIcon className="w-6 h-6" />
-                </button>
-                <button
-                  onClick={() => setViewMode("calendar")}
-                  className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                  aria-label="Calendar view"
-                >
-                  <CalendarIcon className="w-6 h-6" />
-                </button>
-                <button
-                  onClick={() => setIsDarkMode(!isDarkMode)}
-                  className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                  aria-label="テーマを切り替え"
-                >
-                  <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
-                </button>
-                <div className="relative" ref={settingsContainerRef}>
-                  <button
-                    onClick={() => setShowSettings(!showSettings)}
-                    className="relative p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
-                    aria-label="Settings"
-                  >
-                    <CogIcon className="w-6 h-6" />
-                    {showBackupBadge && (
-                      <span
-                        className="absolute top-1 right-1 block w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-amber-50 dark:ring-slate-800"
-                        aria-label="バックアップ推奨"
-                      ></span>
-                    )}
-                  </button>
-                  {showSettings && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
-                      {installPrompt && (
-                        <button
-                          onClick={handleInstallClick}
-                          className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <InstallIcon className="w-4 h-4" />
-                          <span>アプリをインストール</span>
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleBackup()}
-                        className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                      >
-                        <DownloadIcon className="w-4 h-4" />
-                        <span>今すぐバックアップ</span>
-                      </button>
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                      >
-                        <UploadIcon className="w-4 h-4" />
-                        <span>復元</span>
-                      </button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleRestore}
-                        accept=".json,.mimibk"
-                        className="hidden"
-                      />
-                      <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
-                      <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
-                        ヒント:
-                        Safariでは「共有」→「ホーム画面に追加」でインストールできます。
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </header>
-
-        {showSearchBar ? (
-          <div className="p-4 border-b border-amber-200 dark:border-slate-700">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="メモを検索..."
-                className="w-full pl-10 pr-4 py-2 rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-400"
-                autoFocus
-              />
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="flex justify-between items-baseline px-4 pt-2 text-slate-500 dark:text-slate-400">
-              <h2 className="text-2xl font-kiwi font-bold">
-                {currentYear} / {currentMonth}
-              </h2>
-              <span className="text-sm font-medium">
-                {currentMonthNoteCount}件のメモ
-              </span>
-            </div>
-            <RabbitBorder isDarkMode={isDarkMode} />
-          </>
-        )}
-
-        <main className="flex-grow p-4 overflow-y-auto">
-          {filteredNotes.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredNotes.map((note) => (
-                <NoteItem
-                  key={note.id}
-                  note={note}
-                  isSelected={selectedNoteIds.has(note.id)}
-                  isSelectionMode={isSelectionMode}
-                  onClick={handleClick}
-                  onPointerDown={handlePointerDown}
-                  onPointerUp={handlePointerUp}
-                  onPointerLeave={handlePointerUp}
-                  onContextMenu={handleContextMenu}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <RabbitIcon className="w-24 h-24 text-slate-300 dark:text-slate-600 mb-4" />
-              <p className="text-slate-400 dark:text-slate-500">
-                {searchTerm ? "メモが見つかりません。" : "メモメモ、書き書き！"}
-              </p>
-            </div>
-          )}
-        </main>
-
-        {!isSelectionMode && (
-          <footer className="flex-shrink-0 p-4 border-t border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => createNote()}
-                className="flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
-                aria-label="新規メモ"
-              >
-                <PlusIcon className="w-8 h-8 text-slate-600 dark:text-slate-200" />
-              </button>
-              <button
-                onClick={() => createNote()}
-                className="flex-grow h-16 text-left px-6 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors text-lg"
-                aria-label="メモを入力して開始"
-              >
-                メモを入力...
-              </button>
-              <button
-                onClick={() => createNote(true)}
-                className="flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 dark:bg-slate-700 hover:bg-amber-200/50 dark:hover:bg-slate-600/50 transition-colors"
-                aria-label="音声入力で新規メモ"
-              >
-                <MicrophoneIcon className="w-8 h-8 text-slate-600 dark:text-slate-200" />
-              </button>
-            </div>
-          </footer>
-        )}
-      </div>
-    );
   };
 
   return (
-    <>
-      {renderCurrentView()}
-      <DeleteConfirmationModal
-        isOpen={showBulkDeleteConfirm || !!noteIdToDelete}
-        itemCount={showBulkDeleteConfirm ? selectedNoteIds.size : 1}
-        itemPreview={
-          noteToDelete ? getPlainText(noteToDelete.content) : undefined
-        }
-        onConfirm={handleConfirmDelete}
-        onCancel={handleCancelDelete}
-      />
-      {RestoreConfirmModal}
-      {Toast}
-    </>
+    <div className="flex flex-col h-screen bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
+      <header className="relative flex-shrink-0 flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            <ChevronLeftIcon className="w-6 h-6" />
+          </button>
+          <div
+            className={`transition-opacity duration-500 pointer-events-none ${
+              saveStatus === "saved" ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <div className="flex items-center space-x-1 text-sm text-slate-400 dark:text-slate-500">
+              <CheckIcon className="w-4 h-4" />
+              <span>保存しました</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={handleShare}
+            className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            <ShareIcon className="w-5 h-5" />
+          </button>
+          <button
+            onClick={handleToggleNotificationPin}
+            className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
+              pinnedToNotificationIds.has(note.id)
+                ? "text-yellow-500 dark:text-yellow-400"
+                : ""
+            }`}
+          >
+            {pinnedToNotificationIds.has(note.id) ? (
+              <BellIconFilled className="w-5 h-5" />
+            ) : (
+              <BellIcon className="w-5 h-5" />
+            )}
+          </button>
+          <button
+            onClick={() => {
+              if (!note.isPinned)
+                localStorage.setItem("nana-memo-new-pin-since-backup", "true");
+              onUpdate(note.id, { isPinned: !note.isPinned });
+            }}
+            className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
+              note.isPinned ? "text-rose-500" : ""
+            }`}
+          >
+            <BookmarkIcon className="w-5 h-5" isFilled={note.isPinned} />
+          </button>
+          <button
+            onClick={() => onDelete(note.id)}
+            className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            <TrashIcon className="w-5 h-5" />
+          </button>
+          <button
+            onClick={onClose}
+            className="ml-2 px-3 py-1.5 rounded-full text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500"
+          >
+            完了
+          </button>
+        </div>
+      </header>
+      <div className="flex-shrink-0 flex flex-col items-center justify-center p-2 space-y-2">
+        <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
+          <select
+            value={note.font}
+            onChange={(e) => onUpdate(note.id, { font: e.target.value })}
+            className="h-8 px-2 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent appearance-none"
+          >
+            {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
+              <option key={fontClass} value={fontClass}>
+                {fontName}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center space-x-1 bg-amber-100 dark:bg-slate-700 rounded-full p-0.5">
+            {Object.entries(FONT_SIZE_OPTIONS).map(([sizeClass, sizeName]) => (
+              <button
+                key={sizeClass}
+                onClick={() => applyFontSize(sizeClass)}
+                onMouseDown={(e) => e.preventDefault()}
+                className={`px-2 py-0.5 text-sm rounded-full transition-colors ${
+                  note.fontSize === sizeClass
+                    ? "bg-white dark:bg-slate-500 shadow-sm"
+                    : "hover:bg-amber-200/50 dark:hover:bg-slate-600/50"
+                }`}
+              >
+                {sizeName}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
+          <div className="flex items-center">
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => document.execCommand("bold")}
+              className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
+            >
+              <BoldIcon className="w-5 h-5" />
+            </button>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => document.execCommand("underline")}
+              className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
+            >
+              <UnderlineIcon className="w-5 h-5" />
+            </button>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => document.execCommand("strikeThrough")}
+              className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
+            >
+              <StrikethroughIcon className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex items-center space-x-2">
+            {Object.entries(COLOR_OPTIONS).map(([colorClass, colorName]) => (
+              <button
+                key={colorClass}
+                title={colorName}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyColor(colorClass)}
+                className="w-6 h-6 rounded-full transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 flex items-center justify-center"
+                style={{
+                  backgroundColor: (isDarkMode
+                    ? COLOR_HEX_MAP_DARK
+                    : COLOR_HEX_MAP_LIGHT)[colorClass],
+                }}
+              >
+                {note.color === colorClass && (
+                  <CheckIcon className="w-4 h-4 text-white mix-blend-difference" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <RabbitBorder isDarkMode={isDarkMode} />
+      <main className="flex-grow p-4 md:p-6 overflow-y-auto">
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={(e) =>
+            onUpdate(note.id, { content: e.currentTarget.innerHTML })
+          }
+          className={`w-full h-full bg-transparent resize-none focus:outline-none ${
+            note.font
+          } ${note.color} ${note.fontSize || "text-lg"}`}
+          data-placeholder="メモを入力..."
+        />
+      </main>
+      <button
+        onClick={onVoiceInput}
+        className={`fixed bottom-8 right-6 z-10 w-16 h-16 rounded-full bg-rose-500 text-white shadow-xl flex items-center justify-center transform transition-all duration-300 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-offset-4 focus:ring-offset-amber-50 dark:focus:ring-offset-slate-900 focus:ring-rose-500 ${
+          isListening ? "animate-pulse ring-4 ring-rose-400" : ""
+        }`}
+      >
+        <MicrophoneIcon className="w-8 h-8" />
+      </button>
+    </div>
   );
-}
+};
