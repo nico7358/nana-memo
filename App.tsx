@@ -767,6 +767,19 @@ export default function App() {
   const activeNoteRef = useRef(activeNote);
   activeNoteRef.current = activeNote;
 
+  // 起動時のローディング画面をフェードアウトさせる
+  useEffect(() => {
+    const loadingOverlay = document.getElementById("loading-overlay");
+    if (loadingOverlay) {
+      // フェードアウト用のクラスを追加
+      loadingOverlay.classList.add("fade-out");
+      // アニメーション完了後にDOMから削除
+      setTimeout(() => {
+        loadingOverlay.remove();
+      }, 500); // CSSのtransition durationと一致させる
+    }
+  }, []); // 空の依存配列で初回マウント時のみ実行
+
   // Load notes from localStorage on initial render
   useEffect(() => {
     try {

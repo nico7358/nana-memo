@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/icon-512.png" />
+    <link rel="icon" type="image/png" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>nana memo</title>
     <link rel="manifest" href="/manifest.json" />
@@ -227,9 +227,6 @@
         bottom: 0;
         left: 0;
       }
-      .bottom-0 {
-        bottom: 0;
-      }
       .bottom-1 {
         bottom: 0.25rem;
       }
@@ -238,9 +235,6 @@
       }
       .bottom-8 {
         bottom: 2rem;
-      }
-      .left-0 {
-        left: 0;
       }
       .left-1\/2 {
         left: 50%;
@@ -328,14 +322,11 @@
       .h-10 {
         height: 2.5rem;
       }
-      .h-12 {
-        height: 3rem;
+      .h-2\.5 {
+        height: 0.625rem;
       }
       .h-16 {
         height: 4rem;
-      }
-      .h-2\.5 {
-        height: 0.625rem;
       }
       .h-24 {
         height: 6rem;
@@ -363,9 +354,6 @@
       }
       .w-10 {
         width: 2.5rem;
-      }
-      .w-12 {
-        width: 3rem;
       }
       .w-16 {
         width: 4rem;
@@ -468,9 +456,6 @@
       .items-center {
         align-items: center;
       }
-      .items-end {
-        align-items: flex-end;
-      }
       .justify-center {
         justify-content: center;
       }
@@ -482,9 +467,6 @@
       }
       .gap-1 {
         gap: 0.25rem;
-      }
-      .gap-2 {
-        gap: 0.5rem;
       }
       .gap-4 {
         gap: 1rem;
@@ -1012,9 +994,6 @@
       .hover\:bg-slate-300:hover {
         background-color: #cbd5e1;
       }
-      .hover\:bg-slate-600:hover {
-        background-color: #475569;
-      }
       .hover\:shadow-lg:hover {
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
           0 4px 6px -4px rgba(0, 0, 0, 0.1);
@@ -1145,6 +1124,9 @@
         inset: 0;
         z-index: 9999;
       }
+      #loading-overlay.fade-out {
+        opacity: 0;
+      }
       html.dark #loading-overlay {
         background-color: #0f172a; /* dark:bg-slate-900 */
       }
@@ -1181,7 +1163,8 @@
           "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
           "react/": "https://aistudiocdn.com/react@^19.1.1/",
           "react": "https://aistudiocdn.com/react@^19.1.1",
-          "@google/genai": "https://aistudiocdn.com/@google/genai@^1.21.0"
+          "@google/genai": "https://aistudiocdn.com/@google/genai@^1.21.0",
+          "sql.js": "https://aistudiocdn.com/sql.js@^1.13.0"
         }
       }
     </script>
