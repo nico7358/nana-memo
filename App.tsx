@@ -19,8 +19,9 @@ const ensureSqlJs = () => {
   sqlJsInitializationPromise = (async () => {
     try {
       // 1. WASMファイルをCDNから直接フェッチする
-      // これにより、環境によるパス解決の問題を完全に回避する
-      const wasmURL = "https://aistudiocdn.com/sql.js@1.13.0/sql-wasm.wasm";
+      // 💡 修正: 正しいWASMファイルのパスに修正 (dist/ が抜けていた)
+      const wasmURL =
+        "https://aistudiocdn.com/sql.js@1.13.0/dist/sql-wasm.wasm";
       console.log(`[SQL.js] WASMの読み込み: ${wasmURL}`);
 
       const wasmBinary = await fetch(wasmURL).then((res) => {
