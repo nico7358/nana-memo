@@ -1433,7 +1433,7 @@ const NoteList: React.FC<any> = ({
               className="flex-grow h-16 text-left px-6 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors text-lg"
             >
               {" "}
-              メモを入力...
+              &emsp;&emsp;メモを入力...
             </button>
             <button
               onClick={() => createNote(true)}
