@@ -2,11 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <base href="." />
-    <link rel="icon" type="image/png" href="icon-512.png" />
+    <link rel="icon" type="image/png" href="/icon-512.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>nana memo</title>
-    <link rel="manifest" href="manifest.json" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#ec4899" />
     <link rel="preconnect" href="https://aistudiocdn.com" crossorigin />
     <style id="tailwind-styles">
@@ -1174,7 +1173,7 @@
       // This inline script ensures the service worker is registered as early as possible.
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("sw.js").then(
+          navigator.serviceWorker.register("/sw.js").then(
             (registration) => {
               console.log(
                 "ServiceWorker registration successful with scope: ",
@@ -1215,7 +1214,7 @@
         <p>nanamemoを読み込んでいます...</p>
       </div>
     </div>
-    <script type="module" src="index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
     <script>
       // フォントを非同期で読み込む
       window.addEventListener("load", () => {
