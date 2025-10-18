@@ -1,10 +1,12 @@
 const CACHE_NAME = "nana-memo-cache-v4";
-// FIX: Removed '/index.tsx' from cached URLs. It is a source file and not a browsable asset, which would cause the service worker installation to fail.
+// FIX: Use absolute paths for all assets to ensure correct caching.
+// Added icon-192.png for offline notification support.
 const APP_SHELL_URLS = [
-  "./",
-  "index.html",
-  "manifest.json",
-  "icon-512.png",
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/icon-192.png",
+  "/icon-512.png",
   "https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700&family=Dela+Gothic+One&family=Kiwi+Maru&display=swap",
 ];
 
@@ -125,8 +127,8 @@ self.addEventListener("message", (event) => {
     const { title, body, noteId } = event.data.payload;
     self.registration.showNotification(title, {
       body,
-      icon: "icon-192.png",
-      badge: "icon-192.png",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
       tag: `note-${noteId}`,
       requireInteraction: true,
       data: { noteId },
