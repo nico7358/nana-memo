@@ -19,15 +19,29 @@ const ensureSqlJs = () => {
 
   sqlJsInitializationPromise = (async () => {
     try {
-      // 標準的な方法でsql.jsに自身のWASMファイルをCDNからロードさせる。
-      // これが最も互換性の高い方法。
-      const SQL = await initSqlJs();
+      // ユーザー様の分析に基づき、WASMファイルをCDNから明示的に読み込むことで初期化を安定させる
+      const SQL = await initSqlJs({
+        locateFile: (file: string) =>
+          `https://aistudiocdn.com/sql.js@^1.13.0/${file}`,
+      });
 
       if (!SQL || typeof SQL.Database !== "function") {
         throw new Error(
           "SQL.jsの初期化に成功しましたが、無効なモジュールが返されました。"
         );
       }
+
+      // Pre-flight check: Test if the DB can be created to ensure WASM is working
+      try {
+        const testDb = new SQL.Database();
+        testDb.close();
+      } catch (e) {
+        console.error("[SQL.js] Pre-flight check failed:", e);
+        throw new Error(
+          "データベースエンジンがこのブラウザ環境で動作しません。"
+        );
+      }
+
       sqlJsInstance = SQL;
       sqlJsInitializationPromise = null; // 成功したのでプロミスをクリア
       return SQL;
@@ -38,21 +52,17 @@ const ensureSqlJs = () => {
       let detailedMessage = "不明なエラーが発生しました。";
       if (err instanceof Error) {
         detailedMessage = err.message;
-        // ネットワークエラーやCORS関連のエラーを検知して、より分かりやすいメッセージを出す
         if (
           detailedMessage.toLowerCase().includes("failed to fetch") ||
           detailedMessage.toLowerCase().includes("cors")
         ) {
           detailedMessage =
-            "WASMモジュールの読み込みに失敗しました。ネットワーク接続またはブラウザのセキュリティ設定を確認してください。";
+            "WASMモジュールの読み込みに失敗しました。ネットワーク接続を確認してください。";
         }
-      } else if (typeof err === "string") {
-        detailedMessage = err;
       }
 
-      // Error {} ループを抜け出すため、具体的で新しいエラーをスローする
       throw new Error(
-        `データベースエンジンの初期化に失敗しました。(${detailedMessage})`
+        `データベースエンジンの初期化に失敗しました: ${detailedMessage}`
       );
     }
   })();
@@ -424,20 +434,14 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   let db: any;
   try {
     const SQL = await ensureSqlJs();
-
-    // Pre-flight Check (診断テスト) は ensureSqlJs 内部で暗黙的に行われるようになった
-
     const fileBuffer = new Uint8Array(await file.arrayBuffer());
 
-    // ヘッダースキャンロジック
     const SQLITE_HEADER = "SQLite format 3\0";
     let dbBuffer = fileBuffer;
     let headerIndex = -1;
-    const headerBytes = new Uint8Array(SQLITE_HEADER.length);
-    for (let i = 0; i < SQLITE_HEADER.length; i++) {
-      headerBytes[i] = SQLITE_HEADER.charCodeAt(i);
-    }
+    const headerBytes = new TextEncoder().encode(SQLITE_HEADER);
     const searchLimit = Math.min(4096, fileBuffer.length - headerBytes.length);
+
     for (let i = 0; i <= searchLimit; i++) {
       let found = true;
       for (let j = 0; j < headerBytes.length; j++) {
@@ -451,127 +455,74 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         break;
       }
     }
-    if (headerIndex === -1) {
-      throw new Error(
-        "ファイル内に有効なSQLiteヘッダーが見つかりませんでした。"
-      );
-    }
     if (headerIndex > 0) {
       dbBuffer = fileBuffer.slice(headerIndex);
     }
 
-    // ユーザーのデータベースファイルを読み込む
     try {
       db = new SQL.Database(dbBuffer);
     } catch (e: any) {
       console.error("ユーザーのデータベースファイルの読み込みに失敗:", e);
+      if (headerIndex === -1) {
+        throw new Error(
+          "ファイル内に有効なSQLiteヘッダーが見つかりませんでした。"
+        );
+      }
       const reason =
         e.message || (typeof e === "object" ? JSON.stringify(e) : String(e));
       throw new Error(
-        `データベースファイルの読み込みに失敗しました。ファイルが破損しているか、メモリが不足している可能性があります。(詳細: ${reason})`
+        `データベースファイルの読み込みに失敗しました。(詳細: ${reason})`
       );
     }
 
-    // 残りの解析ロジック
-    let tablesResult;
+    const tableName = "NOTE_TB";
+    let tableExists = false;
     try {
-      tablesResult = db.exec(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
+      const tablesResult = db.exec(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`
       );
+      tableExists =
+        tablesResult.length > 0 && tablesResult[0].values.length > 0;
     } catch (e) {
-      throw Object.assign(
-        new Error("データベース内のテーブル一覧の取得に失敗しました。"),
-        { cause: e }
-      );
+      throw new Error("データベース内のテーブル一覧の取得に失敗しました。");
     }
-    if (!tablesResult.length || !tablesResult[0].values.length) {
+
+    if (!tableExists) {
       throw new Error(
-        "バックアップファイル内にメモのテーブルが見つかりませんでした。"
+        `バックアップファイル内に必須のテーブル'${tableName}'が見つかりませんでした。`
       );
     }
-    const tableNames = tablesResult[0].values.flat() as string[];
-    let bestTable: { name: string; mappings: any } | null = null;
-    for (const tableName of tableNames) {
-      try {
-        const tableInfoResult = db.exec(`PRAGMA table_info("${tableName}")`);
-        if (tableInfoResult.length > 0) {
-          const columns = tableInfoResult[0].values.map((row) =>
-            (row[1] as string).toLowerCase()
-          );
-          const mappings = {
-            id: columns.find((c) => c === "_id" || c === "id"),
-            content: columns.find(
-              (c) => c === "text" || c === "content" || c === "note"
-            ),
-            createdAt: columns.find(
-              (c) =>
-                c === "creation_date" || c === "created_at" || c === "created"
-            ),
-            updatedAt: columns.find(
-              (c) =>
-                c === "update_date" || c === "updated_at" || c === "modified"
-            ),
-            isPinned: columns.find(
-              (c) => c === "ear" || c === "pinned" || c === "is_pinned"
-            ),
-          };
-          if (mappings.content && (mappings.createdAt || mappings.updatedAt)) {
-            bestTable = { name: tableName, mappings };
-            break;
-          }
-        }
-      } catch (e) {
-        console.warn(
-          `テーブル "${tableName}" のスキーマ検査に失敗、スキップします:`,
-          e
-        );
-      }
-    }
-    if (!bestTable) {
-      throw new Error(
-        "バックアップファイルから有効なメモデータを特定できませんでした。"
-      );
-    }
-    const { name: notesTableName, mappings } = bestTable;
+
     let result;
     try {
-      result = db.exec(`SELECT * FROM "${notesTableName}"`);
+      result = db.exec(
+        `SELECT _id, text, creation_date, update_date, ear FROM "${tableName}"`
+      );
     } catch (e) {
       throw Object.assign(
         new Error(
-          `テーブル "${notesTableName}" からのデータ読み取りに失敗しました。`
+          `テーブル "${tableName}" からのデータ読み取りに失敗しました。`
         ),
         { cause: e }
       );
     }
-    if (!result.length) return [];
+
+    if (!result.length || !result[0].values.length) return [];
+
     try {
+      const columns = result[0].columns;
       return result[0].values.map((row: any[]) => {
-        const obj: any = {};
-        result[0].columns.forEach(
-          (col, i) => (obj[col.toLowerCase()] = row[i])
-        );
-        const createdAt = parseBackupDate(
-          mappings.createdAt ? obj[mappings.createdAt] : null
-        );
-        const updatedAt = parseBackupDate(
-          mappings.updatedAt ? obj[mappings.updatedAt] : null
-        );
+        const noteData: { [key: string]: any } = {};
+        columns.forEach((col, i) => (noteData[col] = row[i]));
+        const createdAt = parseBackupDate(noteData.creation_date);
+        const updatedAt = parseBackupDate(noteData.update_date);
         const finalCreatedAt = createdAt || updatedAt || Date.now();
         return {
-          id: String(
-            mappings.id && obj[mappings.id]
-              ? obj[mappings.id]
-              : finalCreatedAt + Math.random()
-          ),
-          content: String(
-            (mappings.content ? obj[mappings.content] : "") || ""
-          ).replace(/\n/g, "<br>"),
+          id: String(noteData._id || finalCreatedAt + Math.random()),
+          content: String(noteData.text || "").replace(/\n/g, "<br>"),
           createdAt: finalCreatedAt,
           updatedAt: updatedAt || finalCreatedAt,
-          isPinned: Boolean(
-            mappings.isPinned ? obj[mappings.isPinned] === 1 : false
-          ),
+          isPinned: Boolean(noteData.ear === 1),
           color: "text-slate-800 dark:text-slate-200",
           font: "font-sans",
           fontSize: "text-lg",
@@ -585,7 +536,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     }
   } catch (err: any) {
     console.error("ミミノートの解析中にエラー:", err);
-    // ensureSqlJsからスローされたカスタムエラーメッセージをそのまま表示する
     throw new Error(
       `バックアップファイルの解析に失敗しました: ${
         err.message || "不明なエラーが発生しました。"
@@ -1587,6 +1537,7 @@ const NoteList = React.memo<NoteListProps>(
         <main className="flex-grow p-4 overflow-y-auto">
           {notes.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* Fix: `filteredNotes` is not defined in this scope. Use `notes` prop which contains the filtered notes. */}
               {notes.map((note: Note) => (
                 <NoteItem
                   key={note.id}
