@@ -403,16 +403,16 @@ const FONT_SIZE_COMMAND_MAP: { [key: string]: string } = {
 };
 
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
+  let db: any;
   try {
     const SQL = await ensureSqlJs();
-    const db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
+    const fileBuffer = new Uint8Array(await file.arrayBuffer());
+    db = new SQL.Database(fileBuffer);
 
-    // 1. Get all non-system table names
     const tablesResult = db.exec(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
     );
     if (!tablesResult.length || !tablesResult[0].values.length) {
-      db.close();
       throw new Error(
         "バックアップファイル内にメモのテーブルが見つかりませんでした。"
       );
@@ -421,7 +421,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
 
     let bestTable: { name: string; mappings: any } | null = null;
 
-    // 2. Find the best table by inspecting its columns and create dynamic mappings
     for (const tableName of tableNames) {
       try {
         const tableInfoResult = db.exec(`PRAGMA table_info("${tableName}")`);
@@ -448,33 +447,26 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
             ),
           };
 
-          // A valid table must have a content column and at least one date column.
           if (mappings.content && (mappings.createdAt || mappings.updatedAt)) {
             bestTable = { name: tableName, mappings };
-            break; // Found a suitable table, stop searching.
+            break;
           }
         }
       } catch (e) {
-        console.warn(`Could not inspect table "${tableName}":`, e);
+        console.warn(`テーブル "${tableName}" の検査に失敗:`, e);
       }
     }
 
     if (!bestTable) {
-      db.close();
       throw new Error(
         "バックアップファイルから有効なメモデータを特定できませんでした。"
       );
     }
 
     const { name: notesTableName, mappings } = bestTable;
-
-    // 3. Proceed with the identified table
     const result = db.exec(`SELECT * FROM "${notesTableName}"`);
-    db.close();
-
     if (!result.length) return [];
 
-    // 4. Map rows to Note objects using the dynamic mappings
     return result[0].values.map((row: any[]) => {
       const obj: any = {};
       result[0].columns.forEach((col, i) => (obj[col.toLowerCase()] = row[i]));
@@ -507,8 +499,37 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       };
     });
   } catch (err: any) {
-    console.error("ミミノートの解析中にエラー:", err);
-    throw new Error(`バックアップファイルの解析に失敗しました: ${err.message}`);
+    console.error("ミミノートの解析中に詳細エラー:", err);
+    let errorMessage =
+      "不明なエラーが発生しました。ファイルが破損しているか、サポートされていない形式の可能性があります。";
+    if (err instanceof Error) {
+      errorMessage = err.message;
+    } else if (typeof err === "string") {
+      errorMessage = err;
+    } else if (err && typeof err.message === "string") {
+      errorMessage = err.message;
+    } else {
+      try {
+        const errString = JSON.stringify(err);
+        if (errString !== "{}") errorMessage = errString;
+      } catch (e) {
+        /* JSON.stringify failed */
+      }
+    }
+    if (errorMessage.includes("file is not a database")) {
+      errorMessage = "ファイルが有効なデータベース形式ではありません。";
+    }
+    throw new Error(
+      `バックアップファイルの解析に失敗しました: ${errorMessage}`
+    );
+  } finally {
+    if (db) {
+      try {
+        db.close();
+      } catch (e) {
+        console.error("データベースのクローズに失敗:", e);
+      }
+    }
   }
 }
 
