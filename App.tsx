@@ -979,33 +979,39 @@ export default function App() {
 
   if (activeNote) {
     return (
-      // FIX: Pass correct props to NoteEditor to resolve TypeScript error.
-      <NoteEditor
-        note={activeNote}
-        isDarkMode={isDarkMode}
-        pinnedToNotificationIds={pinnedToNotificationIds}
-        saveStatus={saveStatus}
-        isListening={isListening}
-        onUpdate={updateNote}
-        onClose={handleCloseEditor}
-        onDelete={(id) =>
-          setDeleteConfirmation({
-            ids: [id],
-            preview: getPlainText(activeNote.content),
-          })
-        }
-        setPinnedToNotificationIds={setPinnedToNotificationIds}
-        showToast={showToast}
-        onVoiceInput={handleVoiceInput}
-        startVoiceOnMount={startVoiceOnMount}
-        setStartVoiceOnMount={setStartVoiceOnMount}
-      />
+      <>
+        <NoteEditor
+          note={activeNote}
+          isDarkMode={isDarkMode}
+          pinnedToNotificationIds={pinnedToNotificationIds}
+          saveStatus={saveStatus}
+          isListening={isListening}
+          onUpdate={updateNote}
+          onClose={handleCloseEditor}
+          onDelete={(id) =>
+            setDeleteConfirmation({
+              ids: [id],
+              preview: getPlainText(activeNote.content),
+            })
+          }
+          setPinnedToNotificationIds={setPinnedToNotificationIds}
+          showToast={showToast}
+          onVoiceInput={handleVoiceInput}
+          startVoiceOnMount={startVoiceOnMount}
+          setStartVoiceOnMount={setStartVoiceOnMount}
+        />
+        <DeleteConfirmationModal
+          confirmation={deleteConfirmation}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteConfirmation(null)}
+        />
+      </>
     );
   }
 
   return (
     <>
-      {/* FIX: Pass correct props to NoteList to resolve TypeScript error. */}
+      {/* FIX: Removed unused 'unpinFromNotification' prop that was causing a type error. */}
       <NoteList
         notes={filteredNotes}
         isDarkMode={isDarkMode}
@@ -1029,7 +1035,6 @@ export default function App() {
         selectedNoteIds={selectedNoteIds}
         setSelectedNoteIds={setSelectedNoteIds}
         onDelete={(ids, preview) => setDeleteConfirmation({ ids, preview })}
-        unpinFromNotification={unpinFromNotification}
         showToast={showToast}
         onUpdateNotes={setNotes}
         onSetActiveNoteId={setActiveNoteId}
@@ -1514,7 +1519,13 @@ const NoteEditor = React.memo<NoteEditorProps>(
         setStartVoiceOnMount(false);
       }
       document.execCommand("styleWithCSS", false, "true");
-    }, [note.id, startVoiceOnMount, onVoiceInput, setStartVoiceOnMount]);
+    }, [
+      note.id,
+      startVoiceOnMount,
+      onVoiceInput,
+      setStartVoiceOnMount,
+      note.content,
+    ]);
 
     const applyStyle = useCallback(
       (command: string, value?: string) => {
