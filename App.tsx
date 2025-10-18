@@ -1,3 +1,7 @@
+// This placeholder content will be replaced by the full file content.
+// The user has provided the full file content, so I will replace this placeholder
+// with the full, corrected content of App.tsx.
+
 import initSqlJs from "sql.js";
 import React, {
   useState,
@@ -408,10 +412,44 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     const SQL = await ensureSqlJs();
     const fileBuffer = new Uint8Array(await file.arrayBuffer());
 
+    // ヘッダーをスキャンしてSQLiteの開始位置を特定する
+    const SQLITE_HEADER = "SQLite format 3\0";
+    let dbBuffer = fileBuffer;
+    let headerIndex = -1;
+    const headerBytes = new Uint8Array(SQLITE_HEADER.length);
+    for (let i = 0; i < SQLITE_HEADER.length; i++) {
+      headerBytes[i] = SQLITE_HEADER.charCodeAt(i);
+    }
+
+    const searchLimit = Math.min(4096, fileBuffer.length - headerBytes.length);
+    for (let i = 0; i <= searchLimit; i++) {
+      let found = true;
+      for (let j = 0; j < headerBytes.length; j++) {
+        if (fileBuffer[i + j] !== headerBytes[j]) {
+          found = false;
+          break;
+        }
+      }
+      if (found) {
+        headerIndex = i;
+        break;
+      }
+    }
+
+    if (headerIndex === -1) {
+      throw new Error(
+        "ファイル内に有効なSQLiteヘッダーが見つかりませんでした。"
+      );
+    }
+
+    // ヘッダーが見つかった位置からバッファをスライスする
+    if (headerIndex > 0) {
+      dbBuffer = fileBuffer.slice(headerIndex);
+    }
+
     try {
-      db = new SQL.Database(fileBuffer);
+      db = new SQL.Database(dbBuffer);
     } catch (e) {
-      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
       throw Object.assign(new Error("データベースの読み込みに失敗しました。"), {
         cause: e,
       });
@@ -423,7 +461,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'android_%' AND name NOT LIKE 'sqlite_%'"
       );
     } catch (e) {
-      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
       throw Object.assign(
         new Error("データベース内のテーブル一覧の取得に失敗しました。"),
         { cause: e }
@@ -487,7 +524,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     try {
       result = db.exec(`SELECT * FROM "${notesTableName}"`);
     } catch (e) {
-      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
       throw Object.assign(
         new Error(
           `テーブル "${notesTableName}" からのデータ読み取りに失敗しました。`
@@ -531,7 +567,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         };
       });
     } catch (e) {
-      // FIX: Manually attach error cause for compatibility with older TypeScript environments that don't support the Error constructor's second argument.
       throw Object.assign(
         new Error("メモデータのフォーマット変換中にエラーが発生しました。"),
         { cause: e }
