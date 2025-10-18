@@ -410,9 +410,23 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   let db: any;
   try {
     const SQL = await ensureSqlJs();
+
+    // 💡 Pre-flight Check: First, test if the WASM engine works at all in this browser.
+    try {
+      const testDb = new SQL.Database();
+      testDb.close(); // Just creating and closing is enough to test initialization.
+    } catch (e: any) {
+      console.error("SQL.js pre-flight check failed:", e);
+      const reason =
+        e.message || (typeof e === "object" ? JSON.stringify(e) : String(e));
+      throw new Error(
+        `データベースエンジンの初期化に失敗しました。お使いのブラウザ環境ではサポートされていない可能性があります。(詳細: ${reason})`
+      );
+    }
+
     const fileBuffer = new Uint8Array(await file.arrayBuffer());
 
-    // ヘッダーをスキャンしてSQLiteの開始位置を特定する
+    // Header scanning logic
     const SQLITE_HEADER = "SQLite format 3\0";
     let dbBuffer = fileBuffer;
     let headerIndex = -1;
@@ -420,7 +434,6 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     for (let i = 0; i < SQLITE_HEADER.length; i++) {
       headerBytes[i] = SQLITE_HEADER.charCodeAt(i);
     }
-
     const searchLimit = Math.min(4096, fileBuffer.length - headerBytes.length);
     for (let i = 0; i <= searchLimit; i++) {
       let found = true;
@@ -435,26 +448,28 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         break;
       }
     }
-
     if (headerIndex === -1) {
       throw new Error(
         "ファイル内に有効なSQLiteヘッダーが見つかりませんでした。"
       );
     }
-
-    // ヘッダーが見つかった位置からバッファをスライスする
     if (headerIndex > 0) {
       dbBuffer = fileBuffer.slice(headerIndex);
     }
 
+    // Now, try to load the user's database.
     try {
       db = new SQL.Database(dbBuffer);
-    } catch (e) {
-      throw Object.assign(new Error("データベースの読み込みに失敗しました。"), {
-        cause: e,
-      });
+    } catch (e: any) {
+      console.error("Failed to load user's database file:", e);
+      const reason =
+        e.message || (typeof e === "object" ? JSON.stringify(e) : String(e));
+      throw new Error(
+        `データベースファイルの読み込みに失敗しました。ファイルが破損しているか、メモリが不足している可能性があります。(詳細: ${reason})`
+      );
     }
 
+    // The rest of the parsing logic
     let tablesResult;
     try {
       tablesResult = db.exec(
@@ -466,14 +481,12 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         { cause: e }
       );
     }
-
     if (!tablesResult.length || !tablesResult[0].values.length) {
       throw new Error(
         "バックアップファイル内にメモのテーブルが見つかりませんでした。"
       );
     }
     const tableNames = tablesResult[0].values.flat() as string[];
-
     let bestTable: { name: string; mappings: any } | null = null;
     for (const tableName of tableNames) {
       try {
@@ -511,15 +524,12 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         );
       }
     }
-
     if (!bestTable) {
       throw new Error(
         "バックアップファイルから有効なメモデータを特定できませんでした。"
       );
     }
-
     const { name: notesTableName, mappings } = bestTable;
-
     let result;
     try {
       result = db.exec(`SELECT * FROM "${notesTableName}"`);
@@ -531,9 +541,7 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
         { cause: e }
       );
     }
-
     if (!result.length) return [];
-
     try {
       return result[0].values.map((row: any[]) => {
         const obj: any = {};
@@ -573,38 +581,11 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       );
     }
   } catch (err: any) {
-    console.error("ミミノートの解析中に詳細エラー:", err);
-
-    let finalMessage = err.message || "不明なエラーが発生しました。";
-    let causeMessage = "";
-
-    let causeError = err.cause;
-    if (causeError) {
-      if (causeError instanceof Error) {
-        causeMessage = causeError.message;
-      } else if (typeof causeError === "string") {
-        causeMessage = causeError;
-      } else if (causeError && typeof causeError.message === "string") {
-        causeMessage = causeError.message;
-      } else {
-        try {
-          const causeString = JSON.stringify(causeError);
-          if (causeString !== "{}") causeMessage = causeString;
-        } catch (e) {
-          /* ignore */
-        }
-      }
-    }
-
-    const combinedMessage = causeMessage || finalMessage;
-    if (combinedMessage.toLowerCase().includes("file is not a database")) {
-      finalMessage = "ファイルが有効なデータベース形式ではありません。";
-    } else if (causeMessage && causeMessage !== finalMessage) {
-      finalMessage = `${finalMessage} (原因: ${causeMessage})`;
-    }
-
+    console.error("ミミノートの解析中にエラー:", err);
     throw new Error(
-      `バックアップファイルの解析に失敗しました: ${finalMessage}`
+      `バックアップファイルの解析に失敗しました: ${
+        err.message || "不明なエラーが発生しました。"
+      }`
     );
   } finally {
     if (db) {
