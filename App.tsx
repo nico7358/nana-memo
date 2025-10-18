@@ -633,8 +633,23 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       "SELECT name FROM sqlite_master WHERE type='table';"
     );
     console.log("[MimiNote] テーブル一覧:", tables);
-    const tableName = tables[0]?.values?.[0]?.[0] || "mimi_notes";
+
+    // 💡 修正: 正しいノートテーブルを選択するロジックを改善
+    // 'android_metadata' のようなシステムテーブルを除外して、実際のメモデータテーブルを探す
+    const tableNames = tables[0]?.values?.map((row) => row[0] as string) || [];
+    const filteredTables = tableNames.filter(
+      (name) => name !== "android_metadata" && name !== "sqlite_sequence"
+    );
+
+    const tableName = filteredTables[0] || tableNames[0] || "mimi_notes";
     console.log(`[MimiNote] 使用するテーブル名: ${tableName}`);
+
+    if (!tableNames.includes(tableName)) {
+      db.close();
+      throw new Error(
+        `指定されたテーブル'${tableName}'がデータベース内に見つかりません。`
+      );
+    }
 
     const result = db.exec(`SELECT * FROM ${tableName}`);
     // 💡 修正: データが0件の場合も考慮
