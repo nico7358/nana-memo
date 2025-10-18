@@ -23,16 +23,23 @@ const ensureSqlJs = () => {
 
   sqlJsInitializationPromise = (async () => {
     try {
-      const wasmURL =
-        "https://aistudiocdn.com/sql.js@1.13.0/dist/sql-wasm.wasm";
-      const wasmBinary = await fetch(wasmURL).then((res) => {
-        if (!res.ok)
-          throw new Error(`WASMファイルのダウンロードに失敗: ${res.status}`);
-        return res.arrayBuffer();
-      });
+      // 修正点：外部CDNではなく、同一オリジンの絶対パスからWASMを読み込む
+      // これにより、モバイルブラウザ/PWAのクロスオリジン制約を回避する
+      const wasmURL = "/sql-wasm.wasm";
+
+      const response = await fetch(wasmURL);
+      if (!response.ok) {
+        throw new Error(
+          `WASMモジュール(${response.url})のダウンロードに失敗: ${response.status} ${response.statusText}`
+        );
+      }
+      const wasmBinary = await response.arrayBuffer();
+
       const SQL = await initSqlJs({ wasmBinary });
       if (!SQL || typeof SQL.Database !== "function") {
-        throw new Error("SQL.js did not initialize correctly.");
+        throw new Error(
+          "SQL.jsの初期化に失敗しました。WASMモジュールが不正です。"
+        );
       }
       sqlJsInstance = SQL;
       sqlJsInitializationPromise = null;
