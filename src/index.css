@@ -1,0 +1,6 @@
+/* Tailwind CSSのディレクティブを定義 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* その他のカスタムスタイルがあればここに記述 */

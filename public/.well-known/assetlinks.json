@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.nanamemo.app",
+    "sha256_cert_fingerprints": ["0F:33:9D:3C:B7:97:3B:2A:AC:3F:D1:16:7E:F2:E1:9B:72:F2:37:AF:3A:B1:71:35:2F:BC:2F:16:B2:D5:6B:EF"]
+  }
+}]
