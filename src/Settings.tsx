@@ -119,7 +119,7 @@ const SettingsCard = ({
   children: React.ReactNode;
 }) => (
   <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 shadow-md transition-colors duration-300">
-    <h2 className="flex items-center text-lg font-bold mb-4 text-rose-500 dark:text-rose-400 font-kiwi">
+    <h2 className="flex items-center text-lg font-bold mb-4 text-rose-500 dark:text-rose-400">
       {icon}
       <span className="ml-2">{title}</span>
     </h2>
@@ -354,7 +354,7 @@ export default function Settings({
       <main className="flex-grow overflow-y-auto p-4 space-y-8">
         {installPrompt && (
           <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 shadow-md">
-            <h2 className="flex items-center text-lg font-bold mb-3 text-blue-600 dark:text-blue-400 font-kiwi">
+            <h2 className="flex items-center text-lg font-bold mb-3 text-blue-600 dark:text-blue-400">
               <InstallIcon className="w-5 h-5 mr-2" />
               <span>ホーム画面に追加</span>
             </h2>
