@@ -200,55 +200,52 @@ export default function Settings({
       setIsConverting(true);
       showToast("ミミノートの変換を開始します...", 10000);
 
-      // ファイルをArrayBufferとして読み込む (モバイル対応の堅牢な方式)
+      // ✅【要件】スマートフォンでの互換性を高めるため、FileReaderを優先し、失敗時にfile.arrayBuffer()にフォールバック
       const readFileAsArrayBuffer = (
         fileToRead: File
       ): Promise<ArrayBuffer> => {
         return new Promise((resolve, reject) => {
-          // file.arrayBuffer()が利用可能であれば優先して使用
-          if (typeof fileToRead.arrayBuffer === "function") {
-            fileToRead
-              .arrayBuffer()
-              .then(resolve)
-              .catch((err) => {
-                // 失敗した場合はFileReaderにフォールバック
-                console.warn(
-                  "file.arrayBuffer() failed, falling back to FileReader:",
-                  err
-                );
-                const reader = new FileReader();
-                reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(fileToRead);
-              });
-          } else {
-            // file.arrayBuffer()が利用不可の場合、FileReaderを使用
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(fileToRead);
-          }
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            if (e.target?.result instanceof ArrayBuffer) {
+              resolve(e.target.result);
+            } else {
+              reject(new Error("FileReader did not return an ArrayBuffer."));
+            }
+          };
+          reader.onerror = (err) => {
+            console.warn(
+              "FileReader failed, falling back to file.arrayBuffer():",
+              err
+            );
+            if (typeof fileToRead.arrayBuffer === "function") {
+              fileToRead.arrayBuffer().then(resolve).catch(reject);
+            } else {
+              reject(new Error("File could not be read as ArrayBuffer."));
+            }
+          };
+          reader.readAsArrayBuffer(fileToRead);
         });
       };
 
       try {
         const buffer = await readFileAsArrayBuffer(file);
         if (buffer.byteLength === 0) {
-          throw new Error("ファイルが空です。");
+          throw new Error("ファイルが空か、読み込みに失敗しました。");
         }
 
-        // 1. sql.jsを非同期で初期化
+        // ✅【要件】sql.jsを非同期で初期化し、wasmファイルのパスを指定
         const initSqlJs = (await import("sql.js")).default;
         const SQL = await initSqlJs({
-          locateFile: (f) => `/${f}`, // wasmファイルのパスを指定
+          locateFile: (f) => `/${f}`, // publicフォルダ直下のwasmファイルを参照
         });
 
-        // データベースを読み込み
+        // データベースをメモリに読み込む
         const db = new SQL.Database(new Uint8Array(buffer));
         let notes: Note[] = [];
 
         try {
-          // 2. テーブル名を特定 ('NOTE_TB'を優先)
+          // ✅【要件】テーブル名を動的に特定 ('NOTE_TB'を優先)
           const tablesResult = db.exec(
             "SELECT name FROM sqlite_master WHERE type='table';"
           );
@@ -260,10 +257,10 @@ export default function Settings({
           const tableName =
             tables.find((t) => t.toUpperCase() === "NOTE_TB") || tables[0];
           if (!tableName) {
-            throw new Error("メモのテーブルが見つかりません。");
+            throw new Error("メモ用のテーブルが見つかりません。");
           }
 
-          // 3. テーブルからデータを取得し、nanamemo形式に変換
+          // テーブルから全データを取得し、nanamemo形式に変換
           const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
           if (rowsResult.length > 0) {
             const rows = rowsResult[0].values;
@@ -273,6 +270,7 @@ export default function Settings({
               const obj: any = {};
               columns.forEach((col, i) => (obj[col] = row[i]));
 
+              // 日付データをタイムスタンプに変換
               const createdAt = obj.creation_date
                 ? new Date(obj.creation_date).getTime()
                 : Date.now();
@@ -280,13 +278,14 @@ export default function Settings({
                 ? new Date(obj.update_date).getTime()
                 : createdAt;
 
+              // nanamemoのNoteオブジェクトを作成
               return {
                 id: String(obj._id || createdAt + Math.random()),
                 content: String(obj.text || obj.title || ""),
                 createdAt,
                 updatedAt,
                 isPinned: Boolean(obj.ear === 1),
-                // nanamemoのデフォルトスタイル
+                // nanamemoのデフォルトスタイルを適用
                 color: "text-slate-800 dark:text-slate-200",
                 font: "font-sans",
                 fontSize: "text-lg",
@@ -294,28 +293,29 @@ export default function Settings({
             });
           }
         } finally {
-          // データベースを閉じる
+          // データベース接続を閉じてメモリを解放
           db.close();
         }
 
         if (notes.length === 0) {
-          showToast("メモが見つかりませんでした。", 3000);
+          showToast("変換対象のメモが見つかりませんでした。", 3000);
           return;
         }
 
-        // 4. 変換されたデータをJSONとしてダウンロード
+        // ✅【要件】変換したデータをJSONファイルとしてダウンロードさせる
         const jsonString = JSON.stringify(notes, null, 2);
         const blob = new Blob([jsonString], {type: "application/json"});
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         const originalFileName = file.name.replace(/\.[^/.]+$/, "");
-        a.download = `${originalFileName}_nanamemo.json`;
+        a.download = `${originalFileName}_nanamemo_converted.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
+        // ✅【要件】トーストで結果を通知
         showToast(
           `${notes.length}件のメモを変換し、ダウンロードしました！`,
           5000
@@ -326,7 +326,7 @@ export default function Settings({
         showToast(`変換に失敗しました: ${message}`, 5000);
       } finally {
         setIsConverting(false);
-        // ファイル入力をリセットして同じファイルを再度選択できるようにする
+        // ファイル入力をリセットして、同じファイルを再度選択できるようにする
         if (mimibkInputRef.current) {
           mimibkInputRef.current.value = "";
         }
