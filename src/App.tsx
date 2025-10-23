@@ -4,14 +4,12 @@ import React, {
   useMemo,
   useRef,
   useCallback,
+  lazy,
+  Suspense,
 } from "react";
-import initSqlJs from "sql.js";
-import sqlWasm from "sql.js/dist/sql-wasm.wasm?url";
 
-// -----------------------------------------------------------
-// 💡 WASMロード前に実行し、Workerを完全に無効化
-// -----------------------------------------------------------
-(window as any).Module = { noInitialRun: true, noWorker: true };
+// --- Lazy Load Settings Component ---
+const Settings = lazy(() => import("@/Settings.tsx"));
 
 // --- Type Definitions ---
 type Note = {
@@ -70,7 +68,7 @@ interface SpeechRecognitionAlternative {
 // --- Helper Functions ---
 const formatDay = (timestamp: number) =>
   new Date(timestamp)
-    .toLocaleDateString("ja-JP", { day: "2-digit" })
+    .toLocaleDateString("ja-JP", {day: "2-digit"})
     .replace("日", "");
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString("ja-JP", {
@@ -124,74 +122,135 @@ function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   try {
-    // 修正点：インポートしたURLを使って、環境に依存せず初期化する
-    const SQL = await initSqlJs({ locateFile: () => sqlWasm });
+    // ✅ 1. `.mimibk` ファイルを強制的にバイナリとして読み込む (Blob -> FileReader フォールバック)
+    const getBuffer = async (fileToRead: File): Promise<ArrayBuffer> => {
+      try {
+        console.log("[Debug] Attempting to read file via Blob.slice method...");
+        const blob = fileToRead.slice(
+          0,
+          fileToRead.size,
+          "application/octet-stream"
+        );
+        const buffer = await blob.arrayBuffer();
+        if (buffer.byteLength > 0) {
+          console.log("[Debug] Read file via Blob.slice successful.");
+          return buffer;
+        }
+        console.warn(
+          "[Debug] Blob.slice returned empty buffer, falling back to FileReader."
+        );
+      } catch (e) {
+        console.warn(
+          "[Debug] Blob.slice method failed, falling back to FileReader:",
+          e
+        );
+      }
 
-    const buffer = await file.arrayBuffer();
-    const db = new SQL.Database(new Uint8Array(buffer));
-
-    // これ以降の処理は変更ありません
-    const tablesResult = db.exec(
-      "SELECT name FROM sqlite_master WHERE type='table' AND (name = 'mimi_notes' OR name = 'notes');"
-    );
-    if (!tablesResult[0]?.values?.[0]?.[0]) {
-      db.close();
-      throw new Error("メモのテーブルが見つかりませんでした。");
-    }
-    const tableName = tablesResult[0].values[0][0] as string;
-    const result = db.exec(`SELECT * FROM "${tableName}"`);
-    db.close();
-    if (!result.length) return [];
-
-    const rows = result[0].values;
-    const columns = result[0].columns;
-
-    const parseDateString = (dateStr: string | null | undefined): number => {
-      if (!dateStr || typeof dateStr !== "string") return Date.now();
-      const isoStr = dateStr.replace(" ", "T");
-      const date = new Date(isoStr);
-      return isNaN(date.getTime()) ? Date.now() : date.getTime();
+      console.log("[Debug] Using FileReader as fallback.");
+      return readFileAsArrayBuffer(fileToRead); // 既存のヘルパー関数にフォールバック
     };
 
-    const importedNotes = rows
-      .map((row: any[]) => {
-        const noteData: { [key: string]: any } = {};
-        columns.forEach((col, i) => (noteData[col] = row[i]));
+    const rawBuffer = await getBuffer(file);
+    if (rawBuffer.byteLength === 0) {
+      throw new Error("ファイルの読み込みに失敗し、データが空です。");
+    }
+    const buffer = new Uint8Array(rawBuffer);
 
-        const createdAt = parseDateString(noteData.creation_date);
-        const updatedAt = parseDateString(noteData.update_date);
+    // ✅ 2. SQLite 解析処理 - ヘッダー検証
+    let head = "";
+    for (let i = 0; i < 16 && i < buffer.length; i++) {
+      head += String.fromCharCode(buffer[i]);
+    }
+    console.log("[Debug] File header:", head);
+    if (!head.startsWith("SQLite format 3")) {
+      throw new Error("これは有効なSQLiteファイルではありません。");
+    }
 
-        const title = String(noteData.title || "");
-        const text = String(noteData.text || "");
-        let content = "";
-        if (title && text && title !== text) {
-          content = `<b>${title}</b><br><br>${text}`;
-        } else {
-          content = text || title;
-        }
+    // ✅ 2. SQLite 解析処理 - DB初期化 (動的インポート)
+    const initSqlJs = (await import("sql.js")).default;
+    (window as any).Module = {noInitialRun: true, noWorker: true};
+    const SQL = await initSqlJs({
+      locateFile: (f) => `/${f}`,
+      useWorker: false,
+    });
+
+    let db: any;
+    try {
+      db = new SQL.Database(buffer);
+
+      // ✅ 2. SQLite 解析処理 - テーブル検出
+      const result = db.exec(
+        "SELECT name FROM sqlite_master WHERE type='table';"
+      );
+      if (!result.length) throw new Error("DB内にテーブルが見つかりません。");
+
+      const tables = result.flatMap((t: any) => t.values.map((v: any) => v[0]));
+      console.log(`[Main Thread] Tables detected: ${tables.join(", ")}`);
+
+      // 'NOTE_TB' を優先的に探す
+      const tableName =
+        tables.find((t: string) => t.toUpperCase() === "NOTE_TB") ||
+        tables.find((t: string) => t.toLowerCase().includes("note")) ||
+        tables[0];
+      if (!tableName) throw new Error("メモのテーブルが見つかりません。");
+
+      // ✅ 2. SQLite 解析処理 - 行の生成
+      const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
+      if (!rowsResult.length) return []; // データが空の場合は空配列を返す
+
+      const rows = rowsResult[0].values;
+      const columns = rowsResult[0].columns;
+      console.log(
+        `[Main Thread] ${rows.length} rows fetched from ${tableName}`
+      );
+
+      const notes: Note[] = rows.map((row: any[]) => {
+        const obj: any = {};
+        columns.forEach((col, i) => (obj[col] = row[i]));
+
+        const createdAt = obj.creation_date
+          ? new Date(obj.creation_date).getTime()
+          : Date.now();
+        const updatedAt = obj.update_date
+          ? new Date(obj.update_date).getTime()
+          : createdAt;
 
         return {
-          id: String(noteData._id || createdAt),
-          content: content,
-          createdAt: createdAt,
-          updatedAt: updatedAt,
-          isPinned: noteData.ear === 1,
+          id: String(obj._id || createdAt + Math.random()), // IDがなければ生成
+          content: String(obj.text || obj.title || ""),
+          createdAt,
+          updatedAt,
+          isPinned: Boolean(obj.ear === 1),
+          // Default styles
           color: "text-slate-800 dark:text-slate-200",
           font: "font-sans",
           fontSize: "text-lg",
         };
-      })
-      .filter(Boolean);
+      });
 
-    return importedNotes;
+      console.log("[Main Thread] Notes parsed successfully.");
+      return notes;
+    } finally {
+      if (db) {
+        db.close();
+        console.log("[Main Thread] Database closed.");
+      }
+    }
   } catch (error) {
-    console.error("ミミノートの解析中にエラーが発生しました:", error);
-    throw error;
+    console.error(
+      "ミミノートのバックアップ解析中にエラーが発生しました:",
+      error
+    );
+    throw new Error(
+      `ミミノートのバックアップ解析に失敗しました: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 }
 
 // --- Icon Components (Memoized) ---
-const RabbitIcon = React.memo<{ className?: string }>(({ className }) => (
+const RabbitIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     viewBox="0 0 100 100"
@@ -214,19 +273,7 @@ const RabbitIcon = React.memo<{ className?: string }>(({ className }) => (
     </g>
   </svg>
 ));
-const ThemeIcon = React.memo<{ className?: string }>(({ className }) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    enableBackground="new 0 0 24 24"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    {" "}
-    <path d="M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10s10-4.48,10-10S17.52,2,12,2z M12,20c-4.41,0-8-3.59-8-8s3.59-8,8-8v16z" />{" "}
-  </svg>
-));
-const PlusIcon = React.memo<{ className?: string }>(({ className }) => (
+const PlusIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -237,7 +284,7 @@ const PlusIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />{" "}
   </svg>
 ));
-const SearchIcon = React.memo<{ className?: string }>(({ className }) => (
+const SearchIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -248,8 +295,8 @@ const SearchIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />{" "}
   </svg>
 ));
-const BookmarkIcon = React.memo<{ className?: string; isFilled?: boolean }>(
-  ({ className, isFilled }) => (
+const BookmarkIcon = React.memo<{className?: string; isFilled?: boolean}>(
+  ({className, isFilled}) => (
     <svg
       className={className}
       xmlns="http://www.w3.org/2000/svg"
@@ -265,7 +312,7 @@ const BookmarkIcon = React.memo<{ className?: string; isFilled?: boolean }>(
     </svg>
   )
 );
-const ChevronLeftIcon = React.memo<{ className?: string }>(({ className }) => (
+const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -276,7 +323,7 @@ const ChevronLeftIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />{" "}
   </svg>
 ));
-const TrashIcon = React.memo<{ className?: string }>(({ className }) => (
+const TrashIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -287,18 +334,17 @@ const TrashIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />{" "}
   </svg>
 ));
-const CogIcon = React.memo<{ className?: string }>(({ className }) => (
+const CogIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z" />{" "}
+    <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z" />
   </svg>
 ));
-const InstallIcon = React.memo<{ className?: string }>(({ className }) => (
+const InstallIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -309,7 +355,7 @@ const InstallIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-5 15l-4-4h2.5V8h3v4H16l-4 4z" />{" "}
   </svg>
 ));
-const DownloadIcon = React.memo<{ className?: string }>(({ className }) => (
+const DownloadIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -320,7 +366,7 @@ const DownloadIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />{" "}
   </svg>
 ));
-const UploadIcon = React.memo<{ className?: string }>(({ className }) => (
+const UploadIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -331,7 +377,7 @@ const UploadIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" />{" "}
   </svg>
 ));
-const BoldIcon = React.memo<{ className?: string }>(({ className }) => (
+const BoldIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -342,7 +388,7 @@ const BoldIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z" />{" "}
   </svg>
 ));
-const UnderlineIcon = React.memo<{ className?: string }>(({ className }) => (
+const UnderlineIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -353,7 +399,7 @@ const UnderlineIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zm-7 2v2h14v-2H5z" />{" "}
   </svg>
 ));
-const MicrophoneIcon = React.memo<{ className?: string }>(({ className }) => (
+const MicrophoneIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -364,7 +410,7 @@ const MicrophoneIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />{" "}
   </svg>
 ));
-const BellIcon = React.memo<{ className?: string }>(({ className }) => (
+const BellIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -375,7 +421,7 @@ const BellIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z" />{" "}
   </svg>
 ));
-const BellIconFilled = React.memo<{ className?: string }>(({ className }) => (
+const BellIconFilled = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -386,7 +432,7 @@ const BellIconFilled = React.memo<{ className?: string }>(({ className }) => (
     <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />{" "}
   </svg>
 ));
-const CheckIcon = React.memo<{ className?: string }>(({ className }) => (
+const CheckIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -397,7 +443,7 @@ const CheckIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />{" "}
   </svg>
 ));
-const CloseIcon = React.memo<{ className?: string }>(({ className }) => (
+const CloseIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -408,7 +454,7 @@ const CloseIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />{" "}
   </svg>
 ));
-const ShareIcon = React.memo<{ className?: string }>(({ className }) => (
+const ShareIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -419,22 +465,30 @@ const ShareIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" />{" "}
   </svg>
 ));
-const StrikethroughIcon = React.memo<{ className?: string }>(
-  ({ className }) => (
-    <svg
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-    >
-      {" "}
-      <path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z" />{" "}
-    </svg>
-  )
-);
+const StrikethroughIcon = React.memo<{className?: string}>(({className}) => (
+  <svg
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+  >
+    {" "}
+    <path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z" />{" "}
+  </svg>
+));
+const SortIcon = React.memo<{className?: string}>(({className}) => (
+  <svg
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+  >
+    <path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z" />
+  </svg>
+));
 
 // --- うさぎボーダーコンポーネント ---
-const RabbitBorder = React.memo<{ isDarkMode: boolean }>(({ isDarkMode }) => {
+const RabbitBorder = React.memo<{isDarkMode: boolean}>(({isDarkMode}) => {
   const svgString = (color: string) =>
     `<svg width="40" height="24" viewBox="0 0 40 24" xmlns="http://www.w3.org/2000/svg"><path d="M-2,20 C5,-5 15,-5 20,20 C25,-5 35,-5 42,20" stroke="${color}" fill="none" stroke-width="3" stroke-linecap="round"/></svg>`;
   const lightColor = "#fde08a"; // amber-200
@@ -476,7 +530,7 @@ const COLOR_OPTIONS = {
   "text-yellow-600 dark:text-yellow-400": "イエロー",
   "text-purple-600 dark:text-purple-400": "パープル",
 };
-const COLOR_HEX_MAP_LIGHT: { [key: string]: string } = {
+const COLOR_HEX_MAP_LIGHT: {[key: string]: string} = {
   "text-slate-800 dark:text-slate-200": "#1e293b",
   "text-rose-600 dark:text-rose-400": "#e11d48",
   "text-blue-600 dark:text-blue-400": "#2563eb",
@@ -484,7 +538,7 @@ const COLOR_HEX_MAP_LIGHT: { [key: string]: string } = {
   "text-yellow-600 dark:text-yellow-400": "#ca8a04",
   "text-purple-600 dark:text-purple-400": "#9333ea",
 };
-const COLOR_HEX_MAP_DARK: { [key: string]: string } = {
+const COLOR_HEX_MAP_DARK: {[key: string]: string} = {
   "text-slate-800 dark:text-slate-200": "#e2e8f0",
   "text-rose-600 dark:text-rose-400": "#fb7185",
   "text-blue-600 dark:text-blue-400": "#60a5fa",
@@ -492,7 +546,7 @@ const COLOR_HEX_MAP_DARK: { [key: string]: string } = {
   "text-yellow-600 dark:text-yellow-400": "#facc15",
   "text-purple-600 dark:text-purple-400": "#c084fc",
 };
-const FONT_SIZE_COMMAND_MAP: { [key: string]: string } = {
+const FONT_SIZE_COMMAND_MAP: {[key: string]: string} = {
   "text-sm": "2",
   "text-base": "3",
   "text-lg": "4",
@@ -552,7 +606,7 @@ const useNotes = () => {
     (id: string, updates: Partial<Omit<Note, "id" | "createdAt">>) => {
       setNotes((currentNotes) =>
         currentNotes.map((note) =>
-          note.id === id ? { ...note, ...updates, updatedAt: Date.now() } : note
+          note.id === id ? {...note, ...updates, updatedAt: Date.now()} : note
         )
       );
     },
@@ -585,6 +639,7 @@ const NoteItem = React.memo<{
   note: Note;
   isSelected: boolean;
   isSelectionMode: boolean;
+  isLinkifyEnabled: boolean;
   onClick: (id: string) => void;
   onPointerDown: (id: string) => void;
   onPointerUp: () => void;
@@ -595,21 +650,52 @@ const NoteItem = React.memo<{
     note,
     isSelected,
     isSelectionMode,
+    isLinkifyEnabled,
     onClick,
     onPointerDown,
     onPointerUp,
     onPointerLeave,
     onContextMenu,
   }) => {
-    const plainTextContent = useMemo(
-      () => getPlainText(note.content) || "新規メモ",
-      [note.content]
-    );
+    const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      // リンクをクリックした場合は、エディタを開く動作をキャンセル
+      if ((e.target as HTMLElement).closest("a")) {
+        return;
+      }
+      onClick(note.id);
+    };
+
+    const contentToRender = useMemo(() => {
+      let html = note.content || "新規メモ";
+      if (isLinkifyEnabled) {
+        const urlRegex = /(\b(https?:\/\/[^\s<>]+)|(www\.[^\s<>]+))/gi;
+        const emailRegex = /(\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b)/gi;
+
+        // HTMLタグを壊さずにリンクを置換する
+        const segments = html.split(/(<[^>]+>)/g);
+        for (let i = 0; i < segments.length; i++) {
+          if (i % 2 === 0) {
+            // タグ以外のテキスト部分のみを処理
+            segments[i] = segments[i]
+              .replace(urlRegex, (url) => {
+                const href = url.startsWith("www.") ? `http://${url}` : url;
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">${url}</a>`;
+              })
+              .replace(emailRegex, (email) => {
+                return `<a href="mailto:${email}" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">${email}</a>`;
+              });
+          }
+        }
+        html = segments.join("");
+      }
+      return html;
+    }, [note.content, isLinkifyEnabled]);
+
     return (
       <div
         role="button"
         tabIndex={0}
-        onClick={() => onClick(note.id)}
+        onClick={handleContainerClick}
         onPointerDown={() => onPointerDown(note.id)}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerLeave}
@@ -625,19 +711,18 @@ const NoteItem = React.memo<{
           </span>
         </div>
         <div className="flex-grow p-4 min-w-0 flex items-center">
-          <p
+          <div
             className={`whitespace-pre-wrap break-words line-clamp-4 ${
               note.font
             } ${note.color} ${note.fontSize || "text-lg"}`}
-          >
-            {plainTextContent}
-          </p>
+            dangerouslySetInnerHTML={{__html: contentToRender}}
+          />
         </div>
         {note.isPinned && (
           <div className="absolute top-0 right-0 w-8 h-8">
             <div
               className="absolute top-0 right-0 w-0 h-0 border-8 border-solid border-transparent border-t-rose-400 dark:border-t-rose-500 border-r-rose-400 dark:border-r-rose-500"
-              style={{ borderTopRightRadius: "0.5rem" }}
+              style={{borderTopRightRadius: "0.5rem"}}
             ></div>
           </div>
         )}
@@ -663,9 +748,9 @@ const DeleteConfirmationModal = React.memo<{
   confirmation: DeleteConfirmation | null;
   onConfirm: () => void;
   onCancel: () => void;
-}>(({ confirmation, onConfirm, onCancel }) => {
+}>(({confirmation, onConfirm, onCancel}) => {
   if (!confirmation) return null;
-  const { ids, preview } = confirmation;
+  const {ids, preview} = confirmation;
   const itemCount = ids.length;
   const title = itemCount > 1 ? `${itemCount}件のメモを削除` : "メモの削除";
   const message =
@@ -732,7 +817,7 @@ export default function App() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettingsPage, setShowSettingsPage] = useState(false);
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -749,17 +834,32 @@ export default function App() {
     Set<string>
   >(new Set());
   const [showBackupBadge, setShowBackupBadge] = useState(false);
-  const [sortByPin, setSortByPin] = useState(true);
+  const [sortBy, setSortBy] = useState<string>("updatedAt_desc");
   const [startVoiceOnMount, setStartVoiceOnMount] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] =
     useState<DeleteConfirmation | null>(null);
+  const [isLinkifyEnabled, setIsLinkifyEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem("nana-memo-list-linkify");
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+  const [isEditorLinkifyEnabled, setIsEditorLinkifyEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem("nana-memo-editor-linkify");
+      return saved !== null ? JSON.parse(saved) : false; // Default false for safety
+    } catch {
+      return false;
+    }
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settingsContainerRef = useRef<HTMLDivElement>(null);
 
   const activeNote = useMemo(
     () => notes.find((note) => note.id === activeNoteId),
@@ -767,6 +867,20 @@ export default function App() {
   );
   const activeNoteRef = useRef(activeNote);
   activeNoteRef.current = activeNote;
+
+  useEffect(() => {
+    localStorage.setItem(
+      "nana-memo-list-linkify",
+      JSON.stringify(isLinkifyEnabled)
+    );
+  }, [isLinkifyEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "nana-memo-editor-linkify",
+      JSON.stringify(isEditorLinkifyEnabled)
+    );
+  }, [isEditorLinkifyEnabled]);
 
   useEffect(() => {
     const loadingOverlay = document.getElementById("loading-overlay");
@@ -838,6 +952,17 @@ export default function App() {
       );
   }, []);
 
+  // Load settings from localStorage
+  useEffect(() => {
+    const savedSortBy = localStorage.getItem("nana-memo-sort-by");
+    if (savedSortBy) setSortBy(savedSortBy);
+  }, []);
+
+  // Save settings to localStorage
+  useEffect(() => {
+    localStorage.setItem("nana-memo-sort-by", sortBy);
+  }, [sortBy]);
+
   useEffect(() => {
     if (notes.length === 0) return;
     const params = new URLSearchParams(window.location.search);
@@ -863,29 +988,6 @@ export default function App() {
       navigator.serviceWorker.removeEventListener("message", handleSWMessage);
     };
   }, [notes]);
-
-  // ✅ NEW: Handle clicks outside the settings menu to close it.
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // If the click is outside the settings container, close the settings menu.
-      if (
-        settingsContainerRef.current &&
-        !settingsContainerRef.current.contains(event.target as Node)
-      ) {
-        setShowSettings(false);
-      }
-    };
-
-    // Add the event listener when the settings menu is shown.
-    if (showSettings) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    // Remove the event listener on cleanup or when the menu is hidden.
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showSettings]); // Re-run the effect when `showSettings` changes.
 
   const showToast = useCallback((message: string, duration: number = 3000) => {
     setToastMessage(message);
@@ -941,14 +1043,22 @@ export default function App() {
     }
   }, [isListening, showToast, updateNote]);
 
-  // ✅ OPTIMIZATION: More efficient sorting and filtering logic.
   const filteredNotes = useMemo(() => {
     const sortedNotes = [...notes].sort((a, b) => {
-      if (sortByPin) {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
+      if (a.isPinned !== b.isPinned) {
+        return a.isPinned ? -1 : 1;
       }
-      return b.updatedAt - a.updatedAt;
+      switch (sortBy) {
+        case "updatedAt_asc":
+          return a.updatedAt - b.updatedAt;
+        case "createdAt_desc":
+          return b.createdAt - a.createdAt;
+        case "createdAt_asc":
+          return a.createdAt - b.createdAt;
+        case "updatedAt_desc":
+        default:
+          return b.updatedAt - a.updatedAt;
+      }
     });
 
     if (!searchTerm) {
@@ -958,7 +1068,7 @@ export default function App() {
     return sortedNotes.filter((n) =>
       getPlainText(n.content).toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [notes, searchTerm, sortByPin]);
+  }, [notes, searchTerm, sortBy]);
 
   const handleCreateNote = useCallback(
     (startWithVoice = false) => {
@@ -1002,7 +1112,7 @@ export default function App() {
 
   const handleConfirmDelete = useCallback(() => {
     if (!deleteConfirmation) return;
-    const { ids } = deleteConfirmation;
+    const {ids} = deleteConfirmation;
     deleteNotesByIds(ids);
     ids.forEach((id) => unpinFromNotification(id, false));
     if (ids.includes(activeNoteId || "")) setActiveNoteId(null);
@@ -1033,7 +1143,7 @@ export default function App() {
       Date.now().toString()
     );
     setShowBackupBadge(false);
-    setShowSettings(false);
+    setShowSettingsPage(false);
     showToast("バックアップファイルを保存しました。");
   }, [notes, showToast]);
 
@@ -1042,7 +1152,7 @@ export default function App() {
       const file = event.target.files?.[0];
       if (file) {
         setShowRestoreConfirm(file);
-        setShowSettings(false);
+        setShowSettingsPage(false);
       }
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
@@ -1120,6 +1230,39 @@ export default function App() {
     [setNotes, showToast]
   );
 
+  if (showSettingsPage) {
+    return (
+      <Suspense
+        fallback={
+          <div className="h-screen w-full bg-amber-50 dark:bg-slate-900" />
+        }
+      >
+        <Settings
+          onClose={() => setShowSettingsPage(false)}
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
+          onBackup={handleBackup}
+          onRestoreTrigger={() => fileInputRef.current?.click()}
+          installPrompt={installPrompt}
+          showToast={showToast}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          isListLinkifyEnabled={isLinkifyEnabled}
+          setIsListLinkifyEnabled={setIsLinkifyEnabled}
+          isEditorLinkifyEnabled={isEditorLinkifyEnabled}
+          setIsEditorLinkifyEnabled={setIsEditorLinkifyEnabled}
+        />
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleRestore}
+          className="hidden"
+          accept=".json,.mimibk,.db"
+        />
+      </Suspense>
+    );
+  }
+
   if (activeNote) {
     return (
       <>
@@ -1142,6 +1285,7 @@ export default function App() {
           onVoiceInput={handleVoiceInput}
           startVoiceOnMount={startVoiceOnMount}
           setStartVoiceOnMount={setStartVoiceOnMount}
+          isEditorLinkifyEnabled={isEditorLinkifyEnabled}
         />
         <DeleteConfirmationModal
           confirmation={deleteConfirmation}
@@ -1162,27 +1306,22 @@ export default function App() {
         setSearchTerm={setSearchTerm}
         showSearchBar={showSearchBar}
         setShowSearchBar={setShowSearchBar}
-        showSettings={showSettings}
-        setShowSettings={setShowSettings}
-        installPrompt={installPrompt}
-        handleBackup={handleBackup}
-        handleRestore={handleRestore}
-        fileInputRef={fileInputRef}
-        settingsContainerRef={settingsContainerRef}
+        onShowSettings={() => setShowSettingsPage(true)}
         showBackupBadge={showBackupBadge}
-        sortByPin={sortByPin}
-        setSortByPin={setSortByPin}
         isSelectionMode={isSelectionMode}
         setIsSelectionMode={setIsSelectionMode}
         selectedNoteIds={selectedNoteIds}
         setSelectedNoteIds={setSelectedNoteIds}
-        onDelete={(ids, preview) => setDeleteConfirmation({ ids, preview })}
+        onDelete={(ids, preview) => setDeleteConfirmation({ids, preview})}
         showToast={showToast}
         onUpdateNotes={setNotes}
         onSetActiveNoteId={setActiveNoteId}
         longPressTimer={longPressTimer}
         longPressTriggered={longPressTriggered}
         createNote={handleCreateNote}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        isLinkifyEnabled={isLinkifyEnabled}
       />
       <DeleteConfirmationModal
         confirmation={deleteConfirmation}
@@ -1246,16 +1385,8 @@ type NoteListProps = {
   setSearchTerm: React.Dispatch<React.SetStateAction<string>>;
   showSearchBar: boolean;
   setShowSearchBar: React.Dispatch<React.SetStateAction<boolean>>;
-  showSettings: boolean;
-  setShowSettings: React.Dispatch<React.SetStateAction<boolean>>;
-  installPrompt: BeforeInstallPromptEvent | null;
-  handleBackup: () => void;
-  handleRestore: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  fileInputRef: React.RefObject<HTMLInputElement>;
-  settingsContainerRef: React.RefObject<HTMLDivElement>;
+  onShowSettings: () => void;
   showBackupBadge: boolean;
-  sortByPin: boolean;
-  setSortByPin: React.Dispatch<React.SetStateAction<boolean>>;
   isSelectionMode: boolean;
   setIsSelectionMode: React.Dispatch<React.SetStateAction<boolean>>;
   selectedNoteIds: Set<string>;
@@ -1267,6 +1398,9 @@ type NoteListProps = {
   longPressTimer: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
   longPressTriggered: React.MutableRefObject<boolean>;
   createNote: (startWithVoice?: boolean) => void;
+  sortBy: string;
+  setSortBy: (sortBy: string) => void;
+  isLinkifyEnabled: boolean;
 };
 const NoteList = React.memo<NoteListProps>(
   ({
@@ -1277,16 +1411,8 @@ const NoteList = React.memo<NoteListProps>(
     setSearchTerm,
     showSearchBar,
     setShowSearchBar,
-    showSettings,
-    setShowSettings,
-    installPrompt,
-    handleBackup,
-    handleRestore,
-    fileInputRef,
-    settingsContainerRef,
+    onShowSettings,
     showBackupBadge,
-    sortByPin,
-    setSortByPin,
     isSelectionMode,
     setIsSelectionMode,
     selectedNoteIds,
@@ -1298,6 +1424,9 @@ const NoteList = React.memo<NoteListProps>(
     longPressTimer,
     longPressTriggered,
     createNote,
+    sortBy,
+    setSortBy,
+    isLinkifyEnabled,
   }) => {
     const exitSelectionMode = useCallback(() => {
       setIsSelectionMode(false);
@@ -1371,18 +1500,24 @@ const NoteList = React.memo<NoteListProps>(
       onUpdateNotes((currentNotes: Note[]) =>
         currentNotes.map((note) =>
           selectedNoteIds.has(note.id)
-            ? { ...note, isPinned: shouldPin, updatedAt: Date.now() }
+            ? {...note, isPinned: shouldPin, updatedAt: Date.now()}
             : note
         )
       );
       exitSelectionMode();
     }, [notes, selectedNoteIds, onUpdateNotes, exitSelectionMode]);
 
-    const handleInstallClick = useCallback(() => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      installPrompt.userChoice.then(() => setShowSettings(false));
-    }, [installPrompt]);
+    const handleSortToggle = useCallback(() => {
+      const newSortBy =
+        sortBy === "updatedAt_desc" ? "updatedAt_asc" : "updatedAt_desc";
+      setSortBy(newSortBy);
+      showToast(
+        newSortBy === "updatedAt_desc"
+          ? "更新日時の新しい順"
+          : "更新日時の古い順",
+        2000
+      );
+    }, [sortBy, setSortBy, showToast]);
 
     const currentMonthNoteCount = useMemo(() => {
       const now = new Date();
@@ -1435,19 +1570,6 @@ const NoteList = React.memo<NoteListProps>(
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setSortByPin((prev: boolean) => !prev)}
-                  className={`p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors ${
-                    sortByPin
-                      ? "text-rose-500 dark:text-rose-400"
-                      : "text-slate-600 dark:text-slate-400"
-                  }`}
-                  title={
-                    sortByPin ? "ピン留め優先ソート中" : "更新日時順ソート中"
-                  }
-                >
-                  <BookmarkIcon className="w-6 h-6" isFilled={true} />
-                </button>
-                <button
                   onClick={() => {
                     if (showSearchBar) setSearchTerm("");
                     setShowSearchBar(!showSearchBar);
@@ -1457,14 +1579,15 @@ const NoteList = React.memo<NoteListProps>(
                   <SearchIcon className="w-6 h-6" />
                 </button>
                 <button
-                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  onClick={handleSortToggle}
                   className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
+                  aria-label="メモの並び順を切り替え"
                 >
-                  <ThemeIcon className="w-6 h-6 text-slate-600 dark:text-yellow-400" />
+                  <SortIcon className="w-6 h-6" />
                 </button>
-                <div className="relative" ref={settingsContainerRef}>
+                <div className="relative">
                   <button
-                    onClick={() => setShowSettings(!showSettings)}
+                    onClick={onShowSettings}
                     className="relative p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors"
                   >
                     <CogIcon className="w-6 h-6" />
@@ -1472,45 +1595,6 @@ const NoteList = React.memo<NoteListProps>(
                       <span className="absolute top-1 right-1 block w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-amber-50 dark:ring-slate-800"></span>
                     )}
                   </button>
-                  {showSettings && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10">
-                      {installPrompt && (
-                        <button
-                          onClick={handleInstallClick}
-                          className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <InstallIcon className="w-4 h-4" />
-                          <span>アプリをインストール</span>
-                        </button>
-                      )}
-                      <button
-                        onClick={handleBackup}
-                        className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                      >
-                        <DownloadIcon className="w-4 h-4" />
-                        <span>今すぐバックアップ</span>
-                      </button>
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full text-left flex items-center space-x-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                      >
-                        <UploadIcon className="w-4 h-4" />
-                        <span>復元</span>
-                      </button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleRestore}
-                        className="hidden"
-                        accept=".json,.mimibk,.db"
-                      />
-                      <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
-                      <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">
-                        ヒント:
-                        Safariでは「共有」→「ホーム画面に追加」でインストールできます。
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </>
@@ -1553,6 +1637,7 @@ const NoteList = React.memo<NoteListProps>(
                   note={note}
                   isSelected={selectedNoteIds.has(note.id)}
                   isSelectionMode={isSelectionMode}
+                  isLinkifyEnabled={isLinkifyEnabled}
                   onClick={handleClick}
                   onPointerDown={handlePointerDown}
                   onPointerUp={handlePointerUp}
@@ -1618,6 +1703,7 @@ type NoteEditorProps = {
   onVoiceInput: () => void;
   startVoiceOnMount: boolean;
   setStartVoiceOnMount: React.Dispatch<React.SetStateAction<boolean>>;
+  isEditorLinkifyEnabled: boolean;
 };
 const NoteEditor = React.memo<NoteEditorProps>(
   ({
@@ -1634,9 +1720,32 @@ const NoteEditor = React.memo<NoteEditorProps>(
     onVoiceInput,
     startVoiceOnMount,
     setStartVoiceOnMount,
+    isEditorLinkifyEnabled,
   }) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const selectionRangeRef = useRef<Range | null>(null);
+
+    useEffect(() => {
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      const handleClick = (e: MouseEvent) => {
+        if (
+          !isEditorLinkifyEnabled &&
+          (e.target as HTMLElement).tagName === "A"
+        ) {
+          e.preventDefault();
+          showToast("編集画面でのリンクは設定で無効になっています", 2000);
+        }
+      };
+
+      editor.addEventListener("click", handleClick);
+      return () => {
+        if (editor) {
+          editor.removeEventListener("click", handleClick);
+        }
+      };
+    }, [isEditorLinkifyEnabled, showToast]);
 
     const saveSelection = useCallback(() => {
       const selection = window.getSelection();
@@ -1691,7 +1800,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
           document.execCommand(command, false, value);
           saveSelection();
           editorRef.current?.dispatchEvent(
-            new Event("input", { bubbles: true, cancelable: true })
+            new Event("input", {bubbles: true, cancelable: true})
           );
         }
       },
@@ -1709,7 +1818,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
             (isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT)[colorClass]
           );
         } else {
-          onUpdate(note.id, { color: colorClass });
+          onUpdate(note.id, {color: colorClass});
         }
       },
       [applyStyle, isDarkMode, note.id, onUpdate]
@@ -1723,7 +1832,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
         ) {
           applyStyle("fontSize", FONT_SIZE_COMMAND_MAP[sizeClass]);
         } else {
-          onUpdate(note.id, { fontSize: sizeClass });
+          onUpdate(note.id, {fontSize: sizeClass});
         }
       },
       [applyStyle, note.id, onUpdate]
@@ -1779,7 +1888,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
       if (!textToShare) return showToast("共有する内容がありません。", 2000);
       try {
         if (navigator.share) {
-          await navigator.share({ title: "nanamemo", text: textToShare });
+          await navigator.share({title: "nanamemo", text: textToShare});
         } else {
           await navigator.clipboard.writeText(textToShare);
           showToast("クリップボードにコピーしました", 2000);
@@ -1792,7 +1901,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
     const handlePinToggle = useCallback(() => {
       if (!note.isPinned)
         localStorage.setItem("nana-memo-new-pin-since-backup", "true");
-      onUpdate(note.id, { isPinned: !note.isPinned });
+      onUpdate(note.id, {isPinned: !note.isPinned});
     }, [note, onUpdate]);
 
     return (
@@ -1863,7 +1972,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
           <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2">
             <select
               value={note.font}
-              onChange={(e) => onUpdate(note.id, { font: e.target.value })}
+              onChange={(e) => onUpdate(note.id, {font: e.target.value})}
               className="h-8 px-2 text-sm rounded-full bg-amber-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500 border-transparent appearance-none"
             >
               {Object.entries(FONT_OPTIONS).map(([fontClass, fontName]) => (
@@ -1944,7 +2053,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
             contentEditable
             suppressContentEditableWarning
             onInput={(e) =>
-              onUpdate(note.id, { content: e.currentTarget.innerHTML })
+              onUpdate(note.id, {content: e.currentTarget.innerHTML})
             }
             className={`w-full h-full bg-transparent resize-none focus:outline-none ${
               note.font

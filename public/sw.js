@@ -8,6 +8,7 @@ const APP_SHELL_URLS = [
   "/icon-192.png",
   "/icon-512.png",
   "/icon-badge.png",
+  "/sql-wasm.js",
   "https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700&family=Dela+Gothic+One&family=Kiwi+Maru&display=swap",
 ];
 
@@ -52,12 +53,6 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   // We only handle GET requests.
   if (event.request.method !== "GET") {
-    return;
-  }
-
-  // 💡 FIX: Bypass cache for .wasm files to ensure they are always fetched from network.
-  if (event.request.url.endsWith(".wasm")) {
-    event.respondWith(fetch(event.request));
     return;
   }
 
@@ -108,7 +103,7 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil(
     clients
-      .matchAll({ type: "window", includeUncontrolled: true })
+      .matchAll({type: "window", includeUncontrolled: true})
       .then((windowClients) => {
         for (const client of windowClients) {
           // すでに開いているタブをフォーカス
@@ -116,7 +111,7 @@ self.addEventListener("notificationclick", (event) => {
             client.focus();
             // メモIDをアプリ側に送る
             if (noteId) {
-              client.postMessage({ type: "OPEN_NOTE", noteId });
+              client.postMessage({type: "OPEN_NOTE", noteId});
             }
             return;
           }
@@ -131,15 +126,15 @@ self.addEventListener("notificationclick", (event) => {
 });
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SHOW_NOTE_NOTIFICATION") {
-    const { title, body, noteId } = event.data.payload;
+    const {title, body, noteId} = event.data.payload;
     self.registration.showNotification(title, {
       body,
       icon: "/icon-192.png",
       badge: "/icon-badge.png",
       tag: `note-${noteId}`,
       requireInteraction: true,
-      data: { noteId },
-      actions: [{ action: "open_note", title: "開く" }],
+      data: {noteId},
+      actions: [{action: "open_note", title: "開く"}],
     });
   }
 });

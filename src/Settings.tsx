@@ -1,17 +1,21 @@
-import React, { useCallback, useState } from "react";
+import React, {useCallback, useState, useRef} from "react";
 
 // --- 型定義 ---
-interface BeforeInstallPromptEvent extends Event {
-  readonly platforms: Array<string>;
-  readonly userChoice: Promise<{
-    outcome: "accepted" | "dismissed";
-    platform: string;
-  }>;
-  prompt(): Promise<void>;
-}
+
+// nanamemoのノート形式
+type Note = {
+  id: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  isPinned: boolean;
+  color: string;
+  font: string;
+  fontSize: string;
+};
 
 // --- アイコンコンポーネント ---
-const ChevronLeftIcon = React.memo<{ className?: string }>(({ className }) => (
+const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -21,7 +25,7 @@ const ChevronLeftIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
   </svg>
 ));
-const DownloadIcon = React.memo<{ className?: string }>(({ className }) => (
+const DownloadIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -31,7 +35,7 @@ const DownloadIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
   </svg>
 ));
-const UploadIcon = React.memo<{ className?: string }>(({ className }) => (
+const UploadIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -41,7 +45,7 @@ const UploadIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" />
   </svg>
 ));
-const PaletteIcon = React.memo<{ className?: string }>(({ className }) => (
+const PaletteIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -51,7 +55,7 @@ const PaletteIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
   </svg>
 ));
-const SortIcon = React.memo<{ className?: string }>(({ className }) => (
+const SortIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -61,7 +65,7 @@ const SortIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z" />
   </svg>
 ));
-const LinkIcon = React.memo<{ className?: string }>(({ className }) => (
+const LinkIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -71,7 +75,7 @@ const LinkIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
   </svg>
 ));
-const ConvertIcon = React.memo<{ className?: string }>(({ className }) => (
+const ConvertIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -81,7 +85,7 @@ const ConvertIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M6.99 11 3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z" />
   </svg>
 ));
-const InfoIcon = React.memo<{ className?: string }>(({ className }) => (
+const InfoIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -91,14 +95,14 @@ const InfoIcon = React.memo<{ className?: string }>(({ className }) => (
     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
   </svg>
 ));
-const InstallIcon = React.memo<{ className?: string }>(({ className }) => (
+const InstallIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-5 15l-4-4h2.5V8h3v4H16l-4 4z" />{" "}
+    <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-5 15l-4-4h2.5V8h3v4H16l-4 4z" />
   </svg>
 ));
 
@@ -114,7 +118,7 @@ const SettingsCard = ({
   icon: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-md transition-colors duration-300">
+  <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 shadow-md transition-colors duration-300">
     <h2 className="flex items-center text-lg font-bold mb-4 text-rose-500 dark:text-rose-400 font-kiwi">
       {icon}
       <span className="ml-2">{title}</span>
@@ -123,27 +127,25 @@ const SettingsCard = ({
   </div>
 );
 
-// トグルスイッチ
 const ToggleSwitch = ({
-  checked,
-  onChange,
+  enabled,
+  setEnabled,
 }: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
+  enabled: boolean;
+  setEnabled: (enabled: boolean) => void;
 }) => (
   <button
+    type="button"
     role="switch"
-    aria-checked={checked}
-    onClick={() => onChange(!checked)}
-    className={`relative inline-flex items-center h-6 rounded-full w-10 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ring-rose-400 dark:focus:ring-offset-slate-900 ${
-      checked ? "bg-rose-500" : "bg-slate-300 dark:bg-slate-600"
+    aria-checked={enabled}
+    onClick={() => setEnabled(!enabled)}
+    className={`px-3 py-1 rounded-full text-sm font-bold transition-colors ${
+      enabled
+        ? "bg-rose-500 text-white hover:bg-rose-600"
+        : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600"
     }`}
   >
-    <span
-      className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300 ${
-        checked ? "translate-x-5" : "translate-x-1"
-      }`}
-    />
+    {enabled ? "オン" : "オフ"}
   </button>
 );
 
@@ -154,10 +156,14 @@ type SettingsProps = {
   setIsDarkMode: (isDark: boolean) => void;
   onBackup: () => void;
   onRestoreTrigger: () => void;
-  installPrompt: BeforeInstallPromptEvent | null;
+  installPrompt: any;
   showToast: (message: string, duration?: number) => void;
   sortBy: string;
   setSortBy: (sortBy: string) => void;
+  isListLinkifyEnabled: boolean;
+  setIsListLinkifyEnabled: (enabled: boolean) => void;
+  isEditorLinkifyEnabled: boolean;
+  setIsEditorLinkifyEnabled: (enabled: boolean) => void;
 };
 
 export default function Settings({
@@ -167,15 +173,167 @@ export default function Settings({
   onBackup,
   onRestoreTrigger,
   installPrompt,
+  showToast,
   sortBy,
   setSortBy,
+  isListLinkifyEnabled,
+  setIsListLinkifyEnabled,
+  isEditorLinkifyEnabled,
+  setIsEditorLinkifyEnabled,
 }: SettingsProps) {
-  const [isLinkifyEnabled, setIsLinkifyEnabled] = useState(true); // UI state only for now
+  const [isConverting, setIsConverting] = useState(false); // ミミノート変換中の状態管理
+  const mimibkInputRef = useRef<HTMLInputElement>(null); // 変換用ファイル入力の参照
 
   const handleInstallClick = useCallback(() => {
     if (!installPrompt) return;
     installPrompt.prompt();
   }, [installPrompt]);
+
+  /**
+   * ミミノート(.mimibk)ファイルをnanamemo形式のJSONに変換し、ダウンロードする
+   */
+  const handleMimibkConvert = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      setIsConverting(true);
+      showToast("ミミノートの変換を開始します...", 10000);
+
+      // ファイルをArrayBufferとして読み込む (モバイル対応の堅牢な方式)
+      const readFileAsArrayBuffer = (
+        fileToRead: File
+      ): Promise<ArrayBuffer> => {
+        return new Promise((resolve, reject) => {
+          // file.arrayBuffer()が利用可能であれば優先して使用
+          if (typeof fileToRead.arrayBuffer === "function") {
+            fileToRead
+              .arrayBuffer()
+              .then(resolve)
+              .catch((err) => {
+                // 失敗した場合はFileReaderにフォールバック
+                console.warn(
+                  "file.arrayBuffer() failed, falling back to FileReader:",
+                  err
+                );
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(fileToRead);
+              });
+          } else {
+            // file.arrayBuffer()が利用不可の場合、FileReaderを使用
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(fileToRead);
+          }
+        });
+      };
+
+      try {
+        const buffer = await readFileAsArrayBuffer(file);
+        if (buffer.byteLength === 0) {
+          throw new Error("ファイルが空です。");
+        }
+
+        // 1. sql.jsを非同期で初期化
+        const initSqlJs = (await import("sql.js")).default;
+        const SQL = await initSqlJs({
+          locateFile: (f) => `/${f}`, // wasmファイルのパスを指定
+        });
+
+        // データベースを読み込み
+        const db = new SQL.Database(new Uint8Array(buffer));
+        let notes: Note[] = [];
+
+        try {
+          // 2. テーブル名を特定 ('NOTE_TB'を優先)
+          const tablesResult = db.exec(
+            "SELECT name FROM sqlite_master WHERE type='table';"
+          );
+          if (!tablesResult.length || !tablesResult[0].values.length) {
+            throw new Error("データベースにテーブルが見つかりません。");
+          }
+
+          const tables = tablesResult[0].values.flat() as string[];
+          const tableName =
+            tables.find((t) => t.toUpperCase() === "NOTE_TB") || tables[0];
+          if (!tableName) {
+            throw new Error("メモのテーブルが見つかりません。");
+          }
+
+          // 3. テーブルからデータを取得し、nanamemo形式に変換
+          const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
+          if (rowsResult.length > 0) {
+            const rows = rowsResult[0].values;
+            const columns = rowsResult[0].columns;
+
+            notes = rows.map((row: any[]) => {
+              const obj: any = {};
+              columns.forEach((col, i) => (obj[col] = row[i]));
+
+              const createdAt = obj.creation_date
+                ? new Date(obj.creation_date).getTime()
+                : Date.now();
+              const updatedAt = obj.update_date
+                ? new Date(obj.update_date).getTime()
+                : createdAt;
+
+              return {
+                id: String(obj._id || createdAt + Math.random()),
+                content: String(obj.text || obj.title || ""),
+                createdAt,
+                updatedAt,
+                isPinned: Boolean(obj.ear === 1),
+                // nanamemoのデフォルトスタイル
+                color: "text-slate-800 dark:text-slate-200",
+                font: "font-sans",
+                fontSize: "text-lg",
+              };
+            });
+          }
+        } finally {
+          // データベースを閉じる
+          db.close();
+        }
+
+        if (notes.length === 0) {
+          showToast("メモが見つかりませんでした。", 3000);
+          return;
+        }
+
+        // 4. 変換されたデータをJSONとしてダウンロード
+        const jsonString = JSON.stringify(notes, null, 2);
+        const blob = new Blob([jsonString], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const originalFileName = file.name.replace(/\.[^/.]+$/, "");
+        a.download = `${originalFileName}_nanamemo.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast(
+          `${notes.length}件のメモを変換し、ダウンロードしました！`,
+          5000
+        );
+      } catch (error) {
+        console.error("ミミノートの変換に失敗しました:", error);
+        const message = error instanceof Error ? error.message : String(error);
+        showToast(`変換に失敗しました: ${message}`, 5000);
+      } finally {
+        setIsConverting(false);
+        // ファイル入力をリセットして同じファイルを再度選択できるようにする
+        if (mimibkInputRef.current) {
+          mimibkInputRef.current.value = "";
+        }
+      }
+    },
+    [showToast]
+  );
 
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
@@ -193,38 +351,95 @@ export default function Settings({
         <div className="w-10 h-10" /> {/* 中央揃えのためのスペーサー */}
       </header>
 
-      <main className="flex-grow overflow-y-auto p-4 space-y-6">
+      <main className="flex-grow overflow-y-auto p-4 space-y-8">
+        {installPrompt && (
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 shadow-md">
+            <h2 className="flex items-center text-lg font-bold mb-3 text-blue-600 dark:text-blue-400 font-kiwi">
+              <InstallIcon className="w-5 h-5 mr-2" />
+              <span>ホーム画面に追加</span>
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              アプリとしてインストールすると、ワンタップでアクセスでき、さらに快適にメモが取れます。
+            </p>
+            <button
+              onClick={handleInstallClick}
+              className="w-full flex items-center justify-center px-4 py-3 text-base font-bold bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-500/50"
+            >
+              <InstallIcon className="w-5 h-5 mr-2" />
+              インストール
+            </button>
+          </div>
+        )}
+
         <SettingsCard
-          title="バックアップ"
+          title="バックアップと復元"
           icon={<DownloadIcon className="w-5 h-5" />}
         >
-          <button
-            onClick={onBackup}
-            className="w-full flex items-center justify-center h-16 px-4 py-16 text-base font-bold bg-blue-500 text-white rounded-lg shadow hover:bg-blue-700 transition-all duration-300 transform hover:scale-105"
-          >
-            <DownloadIcon className="w-5 h-5 mr-2" />
-            バックアップを作成
-          </button>
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-slate-200">
+              バックアップを作成
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 mb-3">
+              現在の全てのメモを、安全な場所に保管するためのファイルを作成します。
+            </p>
+            <button
+              onClick={onBackup}
+              className="w-full flex items-center justify-center h-14 px-4 text-base font-bold bg-rose-500 text-white rounded-lg shadow-md hover:bg-rose-600 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-rose-300 dark:focus:ring-rose-700"
+            >
+              <DownloadIcon className="w-5 h-5 mr-2" />
+              バックアップファイルを作成
+            </button>
+          </div>
 
-          <button
-            onClick={onRestoreTrigger}
-            className="w-full flex items-center justify-center h-16 px-4 py-16 text-base font-bold bg-pink-500 text-white rounded-lg shadow dark:hover:bg-pink-700 transition-all duration-300 transform hover:scale-105"
-          >
-            <UploadIcon className="w-5 h-5 mr-2" />
-            バックアップから復元
-          </button>
-          <hr className="my-2 border-slate-200 dark:border-slate-700" />
-          <div className="flex items-start p-2">
-            <ConvertIcon className="w-6 h-6 mr-3 mt-0.5 flex-shrink-0 text-slate-500 dark:text-slate-400" />
-            <div>
-              <h3 className="font-bold text-slate-700 dark:text-slate-300">
-                バックアップファイル変換ツール
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                ミミノートのバックアップファイル(.mimibk)をnanamemoで復元できるようになりました！
-                <br />
-                「バックアップから復元」ボタンから .mimibk
-                ファイルを選択してください。
+          <hr className="my-6 border-slate-200 dark:border-slate-700" />
+
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-slate-200">
+              データを取り込む
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 mb-4">
+              以前のバックアップファイルや、他のメモアプリのデータから復元します。
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={onRestoreTrigger}
+                className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500"
+              >
+                <UploadIcon className="w-6 h-6 mr-3 flex-shrink-0" />
+                <div>
+                  <span className="font-bold">バックアップから復元</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    nanamemo形式 (.json)
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => !isConverting && mimibkInputRef.current?.click()}
+                disabled={isConverting}
+                className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-yellow-600 dark:text-yellow-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-yellow-300 dark:hover:border-yellow-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ConvertIcon className="w-6 h-6 mr-3 flex-shrink-0" />
+                <div>
+                  <span className="font-bold">
+                    {isConverting ? "変換中..." : "ミミノートを変換"}
+                  </span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    ミミノート形式 (.mimibk, .db)
+                  </span>
+                </div>
+              </button>
+              <input
+                type="file"
+                ref={mimibkInputRef}
+                onChange={handleMimibkConvert}
+                className="hidden"
+                accept=".mimibk,.db"
+              />
+            </div>
+            <div className="flex items-start p-3 mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+              <InfoIcon className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+              <p>
+                「ミミノートを変換」は、nanamemo形式の.jsonファイルを生成してダウンロードします。直接復元したい場合は、「バックアップから復元」ボタンから.mimibkファイルを選択してください。
               </p>
             </div>
           </div>
@@ -234,39 +449,44 @@ export default function Settings({
           title="表示設定"
           icon={<PaletteIcon className="w-5 h-5" />}
         >
-          <div className="flex justify-between items-center p-2 rounded-lg hover:bg-amber-100 dark:hover:bg-slate-700">
+          <div className="flex justify-between items-center p-3 rounded-lg">
             <span className="font-medium text-slate-700 dark:text-slate-300">
               テーマ
             </span>
-            <div className="flex items-center space-x-2">
-              <span
-                className={`text-sm font-semibold transition-colors ${
+            <div className="relative flex w-32 items-center rounded-full bg-rose-100 dark:bg-slate-700 p-1 transition-colors duration-300">
+              <button
+                onClick={() => setIsDarkMode(false)}
+                className={`relative z-10 flex-1 py-1 text-sm font-bold rounded-full transition-colors duration-300 focus:outline-none ${
                   !isDarkMode
-                    ? "text-rose-500 dark:text-rose-400"
-                    : "text-slate-500 dark:text-slate-400"
+                    ? "text-white"
+                    : "text-rose-500 dark:text-rose-300"
                 }`}
               >
                 ライト
-              </span>
-              <ToggleSwitch checked={isDarkMode} onChange={setIsDarkMode} />
-              <span
-                className={`text-sm font-semibold transition-colors ${
-                  isDarkMode
-                    ? "text-rose-400"
-                    : "text-slate-500 dark:text-slate-400"
+              </button>
+              <button
+                onClick={() => setIsDarkMode(true)}
+                className={`relative z-10 flex-1 py-1 text-sm font-bold rounded-full transition-colors duration-300 focus:outline-none ${
+                  isDarkMode ? "text-white" : "text-rose-500 dark:text-rose-300"
                 }`}
               >
                 ダーク
-              </span>
+              </button>
+              <span
+                className={`absolute inset-1 w-1/2 rounded-full bg-rose-500 shadow-md transform transition-transform duration-300 ${
+                  isDarkMode ? "translate-x-full" : "translate-x-0"
+                }`}
+                aria-hidden="true"
+              />
             </div>
           </div>
-          <div className="flex justify-between items-center p-2 rounded-lg hover:bg-amber-100 dark:hover:bg-slate-700">
+          <div className="flex justify-between items-center p-3 rounded-lg hover:bg-amber-100/50 dark:hover:bg-slate-700/50">
             <label
               htmlFor="sort-order"
               className="font-medium text-slate-700 dark:text-slate-300 flex items-center"
             >
               <SortIcon className="w-5 h-5 mr-2" />
-              ソート方法
+              メモの並び順
             </label>
             <select
               id="sort-order"
@@ -280,41 +500,56 @@ export default function Settings({
               <option value="createdAt_asc">作成日時の古い順</option>
             </select>
           </div>
-          <div className="flex justify-between items-center p-2 rounded-lg hover:bg-amber-100 dark:hover:bg-slate-700">
-            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center">
-              <LinkIcon className="w-5 h-5 mr-2" />
-              テキストリンク
-            </span>
-            <ToggleSwitch
-              checked={isLinkifyEnabled}
-              onChange={setIsLinkifyEnabled}
-            />
+
+          <div className="border-t border-amber-200/50 dark:border-slate-700/50 my-2"></div>
+
+          <div className="p-3 rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center">
+                <LinkIcon className="w-5 h-5 mr-2" />
+                メモ一覧のリンク
+              </span>
+              <ToggleSwitch
+                enabled={isListLinkifyEnabled}
+                setEnabled={setIsListLinkifyEnabled}
+              />
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 ml-7">
+              URLやメールアドレスを自動でリンクにします。
+            </p>
+          </div>
+
+          <div className="p-3 rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center">
+                <LinkIcon className="w-5 h-5 mr-2" />
+                編集画面のリンク
+              </span>
+              <ToggleSwitch
+                enabled={isEditorLinkifyEnabled}
+                setEnabled={setIsEditorLinkifyEnabled}
+              />
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 ml-7">
+              編集画面でもリンクをタップで開けるようにします。（誤操作防止のため、オフを推奨）
+            </p>
           </div>
         </SettingsCard>
 
         <SettingsCard
-          title="nanamemo公式情報"
+          title="アプリ情報"
           icon={<InfoIcon className="w-5 h-5" />}
         >
-          {installPrompt && (
-            <button
-              onClick={handleInstallClick}
-              className="w-full flex items-center justify-center px-4 py-4 text-base font-bold bg-green-500 text-white rounded-lg shadow hover:bg-green-600 transition-all duration-300 transform hover:scale-105"
-            >
-              <InstallIcon className="w-5 h-5 mr-2" />
-              アプリをインストール
-            </button>
-          )}
           <div className="flex justify-between items-center p-2">
             <span className="font-medium text-slate-700 dark:text-slate-300">
               バージョン
             </span>
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              v1.4.0
+              v1.5.0
             </span>
           </div>
           <a
-            href="https://github.com/Nana-music-app/nanamemo"
+            href="https://github.com/nico7358"
             target="_blank"
             rel="noopener noreferrer"
             className="block text-center mt-2 p-2 font-medium text-blue-500 dark:text-blue-400 hover:underline"

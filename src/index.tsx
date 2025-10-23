@@ -1,8 +1,8 @@
-import React, { lazy, Suspense } from "react";
+import React, {lazy, Suspense} from "react";
 import ReactDOM from "react-dom/client";
-import "./index.css";
+
 // メインのAppコンポーネントを遅延読み込みする
-const App = lazy(() => import("./App"));
+const App = lazy(() => import("@/App.tsx"));
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
