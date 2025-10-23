@@ -1,7 +1,14 @@
 {
+  "compilerOptions": {
+    // この2行を追加！ TypeScriptに「@」の意味を教えます。
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
   "files": [],
   "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
+    {"path": "./tsconfig.app.json"},
+    {"path": "./tsconfig.node.json"}
   ]
 }
