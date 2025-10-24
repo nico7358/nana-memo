@@ -1132,16 +1132,20 @@ export default function App() {
         setShowRestoreConfirm(file);
         setShowSettingsPage(false);
       }
-      if (fileInputRef.current) fileInputRef.current.value = "";
     },
     []
   );
 
   const proceedWithRestore = useCallback(
     async (file: File | null) => {
-      if (!file) return;
       setShowRestoreConfirm(null);
-      showToast("バックアップファイルを解析中...", 10000); // Give a long timeout for the toast
+      if (!file) {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        return;
+      }
+      showToast("バックアップファイルを解析中...", 10000);
 
       try {
         let importedNotes: Note[];
@@ -1193,10 +1197,21 @@ export default function App() {
           error instanceof Error ? error.message : String(error);
         showToast(`復元に失敗しました: ${errorMessage}`, 5000);
         console.error("Failed to restore notes:", error);
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       }
     },
     [setNotes, showToast]
   );
+
+  const cancelRestore = useCallback(() => {
+    setShowRestoreConfirm(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, []);
 
   if (showSettingsPage) {
     return (
@@ -1295,7 +1310,7 @@ export default function App() {
       {showRestoreConfirm && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setShowRestoreConfirm(null)}
+          onClick={cancelRestore}
         >
           <div
             className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
@@ -1314,7 +1329,7 @@ export default function App() {
             </p>
             <div className="flex justify-end space-x-3">
               <button
-                onClick={() => setShowRestoreConfirm(null)}
+                onClick={cancelRestore}
                 className="px-4 py-2 rounded-md border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
               >
                 キャンセル

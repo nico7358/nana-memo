@@ -196,10 +196,12 @@ export default function Settings({
   const handleMimibkConvert = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      if (mimibkInputRef.current) {
-        mimibkInputRef.current.value = "";
+      if (!file) {
+        if (mimibkInputRef.current) {
+          mimibkInputRef.current.value = "";
+        }
+        return;
       }
-      if (!file) return;
 
       setIsConverting(true);
       showToast("ミミノートの変換を開始します...", 10000);
@@ -233,6 +235,9 @@ export default function Settings({
         const message = error instanceof Error ? error.message : String(error);
         showToast(`変換に失敗しました: ${message}`, 5000);
       } finally {
+        if (mimibkInputRef.current) {
+          mimibkInputRef.current.value = "";
+        }
         setIsConverting(false);
       }
     },
