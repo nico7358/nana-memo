@@ -2,18 +2,14 @@ import React, {useCallback, useState, useRef} from "react";
 import {parseMimiNoteBackup} from "@/App.tsx"; // Import the unified parser
 
 // --- 型定義 ---
-
-// nanamemoのノート形式
-type Note = {
-  id: string;
-  content: string;
-  createdAt: number;
-  updatedAt: number;
-  isPinned: boolean;
-  color: string;
-  font: string;
-  fontSize: string;
-};
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: Array<string>;
+  readonly userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
 
 // --- アイコンコンポーネント ---
 const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
@@ -157,7 +153,7 @@ type SettingsProps = {
   setIsDarkMode: (isDark: boolean) => void;
   onBackup: () => void;
   onRestoreTrigger: () => void;
-  installPrompt: any;
+  installPrompt: BeforeInstallPromptEvent | null;
   showToast: (message: string, duration?: number) => void;
   sortBy: string;
   setSortBy: (sortBy: string) => void;

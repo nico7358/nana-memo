@@ -30,6 +30,7 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
+// --- Speech Recognition Types ---
 interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
@@ -57,6 +58,29 @@ interface SpeechRecognitionAlternative {
   confidence: number;
 }
 
+interface SpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: () => void;
+  onend: () => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  start: () => void;
+  stop: () => void;
+}
+
+// FIX: Correctly type `SpeechRecognition` and `webkitSpeechRecognition` on the `Window`
+// interface as constructors. The `SpeechRecognition` interface describes an *instance*, but
+// `window.SpeechRecognition` is the *constructor* for it. The original `typeof SpeechRecognition`
+// was incorrect because `SpeechRecognition` was only a type (interface), not a value.
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
 // --- Helper Functions ---
 const formatDay = (timestamp: number) =>
   new Date(timestamp)
@@ -72,24 +96,9 @@ const getPlainText = (html: string) => {
   div.innerHTML = html;
   return div.textContent || div.innerText || "";
 };
-const parseBackupDate = (dateInput: any): number | null => {
-  if (dateInput === null || dateInput === undefined || dateInput === "")
-    return null;
-  if (typeof dateInput === "number") {
-    return String(dateInput).length === 10 ? dateInput * 1000 : dateInput;
-  }
-  if (typeof dateInput === "string") {
-    const timestamp = new Date(
-      dateInput.includes(" ") && dateInput.includes(":")
-        ? dateInput.replace(" ", "T")
-        : dateInput
-    ).getTime();
-    return isNaN(timestamp) ? new Date(dateInput).getTime() : timestamp;
-  }
-  return null;
-};
 
 // --- Unified Backup Parsing Logic (Exported) ---
+// eslint-disable-next-line react-refresh/only-export-components
 export async function parseMimiNoteBackup(
   buffer: ArrayBuffer
 ): Promise<Note[]> {
@@ -133,7 +142,9 @@ export async function parseMimiNoteBackup(
       );
       if (!result.length) throw new Error("DB内にテーブルが見つかりません。");
 
-      const tables = result.flatMap((t: any) => t.values.map((v: any) => v[0]));
+      const tables = result.flatMap((t: {values: string[][]}) =>
+        t.values.map((v: string[]) => v[0])
+      );
       const tableName =
         tables.find((t: string) => t.toUpperCase() === "NOTE_TB") ||
         tables.find((t: string) => t.toLowerCase().includes("note")) ||
@@ -146,14 +157,14 @@ export async function parseMimiNoteBackup(
       const rows = rowsResult[0].values;
       const columns = rowsResult[0].columns;
 
-      const notes: Note[] = rows.map((row: any[]) => {
-        const obj: any = {};
+      const notes: Note[] = rows.map((row: unknown[]) => {
+        const obj: Record<string, unknown> = {};
         columns.forEach((col, i) => (obj[col] = row[i]));
         const createdAt = obj.creation_date
-          ? new Date(obj.creation_date).getTime()
+          ? new Date(obj.creation_date as string).getTime()
           : Date.now();
         const updatedAt = obj.update_date
-          ? new Date(obj.update_date).getTime()
+          ? new Date(obj.update_date as string).getTime()
           : createdAt;
         return {
           id: String(obj._id || createdAt + Math.random()),
@@ -171,7 +182,7 @@ export async function parseMimiNoteBackup(
     } finally {
       db.close();
     }
-  } catch (sqliteError: any) {
+  } catch (sqliteError: unknown) {
     console.warn(
       "SQLite parsing failed, attempting fallback text extraction:",
       sqliteError
@@ -201,6 +212,7 @@ export async function parseMimiNoteBackup(
               fontSize: "text-lg",
             });
           }
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (e) {
           console.warn("Could not parse extracted text:", match[1]);
         }
@@ -212,7 +224,11 @@ export async function parseMimiNoteBackup(
       throw new Error("テキストデータからのメモ抽出に失敗しました。");
     } catch (fallbackError) {
       console.error("Fallback text extraction failed:", fallbackError);
-      throw new Error(`DBの解析に失敗しました: ${sqliteError.message}`);
+      const message =
+        sqliteError instanceof Error
+          ? sqliteError.message
+          : String(sqliteError);
+      throw new Error(`DBの解析に失敗しました: ${message}`);
     }
   }
 }
@@ -248,8 +264,7 @@ const PlusIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />{" "}
+    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
   </svg>
 ));
 const SearchIcon = React.memo<{className?: string}>(({className}) => (
@@ -259,8 +274,7 @@ const SearchIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />{" "}
+    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
   </svg>
 ));
 const BookmarkIcon = React.memo<{className?: string; isFilled?: boolean}>(
@@ -271,12 +285,11 @@ const BookmarkIcon = React.memo<{className?: string; isFilled?: boolean}>(
       viewBox="0 0 24 24"
       fill="currentColor"
     >
-      {" "}
       {isFilled ? (
         <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
       ) : (
         <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z" />
-      )}{" "}
+      )}
     </svg>
   )
 );
@@ -287,8 +300,7 @@ const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />{" "}
+    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
   </svg>
 ));
 const TrashIcon = React.memo<{className?: string}>(({className}) => (
@@ -298,8 +310,7 @@ const TrashIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />{" "}
+    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
   </svg>
 ));
 const CogIcon = React.memo<{className?: string}>(({className}) => (
@@ -312,39 +323,6 @@ const CogIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z" />
   </svg>
 ));
-const InstallIcon = React.memo<{className?: string}>(({className}) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    {" "}
-    <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-5 15l-4-4h2.5V8h3v4H16l-4 4z" />{" "}
-  </svg>
-));
-const DownloadIcon = React.memo<{className?: string}>(({className}) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    {" "}
-    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />{" "}
-  </svg>
-));
-const UploadIcon = React.memo<{className?: string}>(({className}) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    {" "}
-    <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" />{" "}
-  </svg>
-));
 const BoldIcon = React.memo<{className?: string}>(({className}) => (
   <svg
     className={className}
@@ -352,8 +330,7 @@ const BoldIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z" />{" "}
+    <path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z" />
   </svg>
 ));
 const UnderlineIcon = React.memo<{className?: string}>(({className}) => (
@@ -363,8 +340,7 @@ const UnderlineIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zm-7 2v2h14v-2H5z" />{" "}
+    <path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zm-7 2v2h14v-2H5z" />
   </svg>
 ));
 const MicrophoneIcon = React.memo<{className?: string}>(({className}) => (
@@ -374,8 +350,7 @@ const MicrophoneIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />{" "}
+    <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />
   </svg>
 ));
 const BellIcon = React.memo<{className?: string}>(({className}) => (
@@ -385,8 +360,7 @@ const BellIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z" />{" "}
+    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z" />
   </svg>
 ));
 const BellIconFilled = React.memo<{className?: string}>(({className}) => (
@@ -396,8 +370,7 @@ const BellIconFilled = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />{" "}
+    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
   </svg>
 ));
 const CheckIcon = React.memo<{className?: string}>(({className}) => (
@@ -407,8 +380,7 @@ const CheckIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />{" "}
+    <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
   </svg>
 ));
 const CloseIcon = React.memo<{className?: string}>(({className}) => (
@@ -418,8 +390,7 @@ const CloseIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />{" "}
+    <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
   </svg>
 ));
 const ShareIcon = React.memo<{className?: string}>(({className}) => (
@@ -429,8 +400,7 @@ const ShareIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" />{" "}
+    <path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" />
   </svg>
 ));
 const StrikethroughIcon = React.memo<{className?: string}>(({className}) => (
@@ -440,8 +410,7 @@ const StrikethroughIcon = React.memo<{className?: string}>(({className}) => (
     viewBox="0 0 24 24"
     fill="currentColor"
   >
-    {" "}
-    <path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z" />{" "}
+    <path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z" />
   </svg>
 ));
 const SortIcon = React.memo<{className?: string}>(({className}) => (
@@ -555,7 +524,7 @@ const useNotes = () => {
     };
   }, [notes, isStorageLoaded]); // Depend on isStorageLoaded as well
 
-  const createNote = useCallback((startWithVoice = false): string => {
+  const createNote = useCallback((): string => {
     const newNote: Note = {
       id: Date.now().toString(),
       content: "",
@@ -825,7 +794,7 @@ export default function App() {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -966,13 +935,12 @@ export default function App() {
 
   const handleVoiceInput = useCallback(() => {
     const SpeechRecognition =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+      window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition)
       return showToast("音声認識はこのブラウザではサポートされていません。");
 
     if (!recognitionRef.current) {
-      const recognition = new SpeechRecognition();
+      const recognition: SpeechRecognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "ja-JP";
@@ -1041,7 +1009,7 @@ export default function App() {
 
   const handleCreateNote = useCallback(
     (startWithVoice = false) => {
-      const newNoteId = createNote(startWithVoice);
+      const newNoteId = createNote();
       setActiveNoteId(newNoteId);
       if (startWithVoice) setStartVoiceOnMount(true);
     },
@@ -1165,8 +1133,11 @@ export default function App() {
             parsedData.length > 0 &&
             "content" in parsedData[0]
           ) {
-            importedNotes = parsedData.map((n: any) => ({
-              ...n,
+            importedNotes = parsedData.map((n: Partial<Note>) => ({
+              id: n.id || String(Date.now()),
+              content: n.content || "",
+              createdAt: n.createdAt || Date.now(),
+              updatedAt: n.updatedAt || Date.now(),
               isPinned: n.isPinned || false,
               color: n.color || "text-slate-800 dark:text-slate-200",
               font: n.font || "font-sans",
@@ -1199,7 +1170,7 @@ export default function App() {
         });
 
         showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
-      } catch (error: any) {
+      } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         showToast(`復元に失敗しました: ${errorMessage}`, 5000);
@@ -1287,7 +1258,6 @@ export default function App() {
       <NoteList
         notes={filteredNotes}
         isDarkMode={isDarkMode}
-        setIsDarkMode={setIsDarkMode}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         showSearchBar={showSearchBar}
@@ -1366,7 +1336,6 @@ export default function App() {
 type NoteListProps = {
   notes: Note[];
   isDarkMode: boolean;
-  setIsDarkMode: React.Dispatch<React.SetStateAction<boolean>>;
   searchTerm: string;
   setSearchTerm: React.Dispatch<React.SetStateAction<string>>;
   showSearchBar: boolean;
@@ -1392,7 +1361,6 @@ const NoteList = React.memo<NoteListProps>(
   ({
     notes,
     isDarkMode,
-    setIsDarkMode,
     searchTerm,
     setSearchTerm,
     showSearchBar,
@@ -1421,9 +1389,11 @@ const NoteList = React.memo<NoteListProps>(
     const toggleNoteSelection = useCallback(
       (noteId: string) => {
         const newSelection = new Set(selectedNoteIds);
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         newSelection.has(noteId)
           ? newSelection.delete(noteId)
           : newSelection.add(noteId);
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         newSelection.size === 0
           ? exitSelectionMode()
           : setSelectedNoteIds(newSelection);
@@ -1453,6 +1423,7 @@ const NoteList = React.memo<NoteListProps>(
     const handleClick = useCallback(
       (noteId: string) => {
         if (longPressTriggered.current) return;
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         isSelectionMode
           ? toggleNoteSelection(noteId)
           : onSetActiveNoteId(noteId);
@@ -1654,7 +1625,6 @@ const NoteList = React.memo<NoteListProps>(
                 onClick={() => createNote()}
                 className="flex-grow h-16 text-left px-6 rounded-full bg-amber-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-amber-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-colors text-lg"
               >
-                {" "}
                 &emsp;&emsp;メモを入力...
               </button>
               <button
@@ -1756,6 +1726,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
         editorRef.current.innerHTML = note.content;
       }
       // Only run when switching to a different note.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [note.id]);
 
     useEffect(() => {
@@ -1879,7 +1850,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
           await navigator.clipboard.writeText(textToShare);
           showToast("クリップボードにコピーしました", 2000);
         }
-      } catch (error) {
+      } catch {
         showToast("共有/コピーに失敗しました。", 2000);
       }
     }, [note.content, showToast]);
