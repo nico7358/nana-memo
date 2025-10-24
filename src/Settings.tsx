@@ -197,9 +197,7 @@ export default function Settings({
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) {
-        if (mimibkInputRef.current) {
-          mimibkInputRef.current.value = "";
-        }
+        if (mimibkInputRef.current) mimibkInputRef.current.value = "";
         return;
       }
 
@@ -207,7 +205,66 @@ export default function Settings({
       showToast("ミミノートの変換を開始します...", 10000);
 
       try {
-        const notes = await parseMimiNoteBackup(file);
+        // 修正点：FileReaderを使い、成功するまで待つPromiseでラップする、最も古典的で確実な方法
+        const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsArrayBuffer(file);
+        });
+
+        if (buffer.byteLength === 0) {
+          throw new Error("ファイルが空か、読み込みに失敗しました。");
+        }
+
+        const initSqlJs = (await import("sql.js")).default;
+        const sqlWasmUrl = (await import("sql.js/dist/sql-wasm.wasm?url"))
+          .default;
+        const SQL = await initSqlJs({locateFile: () => sqlWasmUrl});
+
+        const db = new SQL.Database(new Uint8Array(buffer));
+        let notes: Note[] = [];
+        try {
+          const tablesResult = db.exec(
+            "SELECT name FROM sqlite_master WHERE type='table';"
+          );
+          if (!tablesResult.length || !tablesResult[0].values.length)
+            throw new Error("データベースにテーブルが見つかりません。");
+          const tables = tablesResult[0].values.flat() as string[];
+          const tableName =
+            tables.find((t) => t.toUpperCase() === "NOTE_TB") ||
+            tables.find((t) => t.toLowerCase().includes("note")) ||
+            tables[0];
+          if (!tableName) throw new Error("メモ用のテーブルが見つかりません。");
+
+          const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
+          if (rowsResult.length > 0) {
+            const rows = rowsResult[0].values;
+            const columns = rowsResult[0].columns;
+            notes = rows.map((row: any[]) => {
+              const obj: any = {};
+              columns.forEach((col, i) => (obj[col] = row[i]));
+              const createdAt = new Date(
+                obj.creation_date?.replace(" ", "T") || Date.now()
+              ).getTime();
+              const updatedAt = new Date(
+                obj.update_date?.replace(" ", "T") || createdAt
+              ).getTime();
+              return {
+                id: String(obj._id || createdAt + Math.random()),
+                content: String(obj.text || obj.title || ""),
+                createdAt,
+                updatedAt,
+                isPinned: Boolean(obj.ear === 1),
+                color: "text-slate-800 dark:text-slate-200",
+                font: "font-sans",
+                fontSize: "text-lg",
+              };
+            });
+          }
+        } finally {
+          db.close();
+        }
 
         if (notes.length === 0) {
           showToast("変換対象のメモが見つかりませんでした。", 3000);
@@ -225,7 +282,6 @@ export default function Settings({
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-
         showToast(
           `${notes.length}件のメモを変換し、ダウンロードしました！`,
           5000
