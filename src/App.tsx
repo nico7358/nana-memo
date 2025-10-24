@@ -1216,7 +1216,7 @@ export default function App() {
           ref={fileInputRef}
           onChange={handleRestore}
           className="hidden"
-          accept=".json,.mimibk,.db"
+          accept=".json,.mimibk,.db,application/octet-stream,*/*"
         />
       </Suspense>
     );

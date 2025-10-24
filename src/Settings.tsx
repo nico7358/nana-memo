@@ -429,7 +429,7 @@ export default function Settings({
                 ref={mimibkInputRef}
                 onChange={handleMimibkConvert}
                 className="hidden"
-                accept=".mimibk,.db"
+                accept=".mimibk,.db,application/octet-stream,*/*"
               />
             </div>
             <div className="flex items-start p-3 mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
