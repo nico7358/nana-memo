@@ -204,11 +204,11 @@ export default function Settings({
       showToast("ミミノートの変換を開始します...", 10000);
 
       try {
-        if (file.size === 0) {
+        const buffer = await file.arrayBuffer();
+        if (buffer.byteLength === 0) {
           throw new Error("ファイルが空です。");
         }
 
-        const buffer = await file.arrayBuffer();
         let bytes = new Uint8Array(buffer);
         let notes: Note[] = [];
 
