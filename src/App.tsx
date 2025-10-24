@@ -1,15 +1,7 @@
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useRef,
-  useCallback,
-  lazy,
-  Suspense,
-} from "react";
+import React, {useState, useEffect, useMemo, useRef, useCallback} from "react";
 
-// --- Lazy Load Settings Component ---
-const Settings = lazy(() => import("@/Settings.tsx"));
+// --- Statically import Settings component to fix lazy load issue with service worker ---
+import Settings from "@/Settings.tsx";
 
 // --- Type Definitions ---
 type Note = {
@@ -1191,11 +1183,7 @@ export default function App() {
 
   if (showSettingsPage) {
     return (
-      <Suspense
-        fallback={
-          <div className="h-screen w-full bg-amber-50 dark:bg-slate-900" />
-        }
-      >
+      <>
         <Settings
           onClose={() => setShowSettingsPage(false)}
           isDarkMode={isDarkMode}
@@ -1218,7 +1206,7 @@ export default function App() {
           className="hidden"
           accept=".json,.mimibk,.db,application/octet-stream,*/*"
         />
-      </Suspense>
+      </>
     );
   }
 
