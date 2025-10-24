@@ -207,7 +207,8 @@ export default function Settings({
       showToast("ミミノートの変換を開始します...", 10000);
 
       try {
-        const notes = await parseMimiNoteBackup(file);
+        const buffer = await file.arrayBuffer();
+        const notes = await parseMimiNoteBackup(buffer);
 
         if (notes.length === 0) {
           showToast("変換対象のメモが見つかりませんでした。", 3000);

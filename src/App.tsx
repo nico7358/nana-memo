@@ -90,20 +90,10 @@ const parseBackupDate = (dateInput: any): number | null => {
 };
 
 // --- Unified Backup Parsing Logic (Exported) ---
-export async function parseMimiNoteBackup(file: File): Promise<Note[]> {
-  if (!file) {
-    throw new Error("ファイルが選択されていません。");
-  }
-
-  let buffer: ArrayBuffer;
-  try {
-    buffer = await file.arrayBuffer();
-  } catch (e) {
-    console.error("File reading error:", e);
-    throw new Error("ファイルの読み込みに失敗しました。");
-  }
-
-  if (buffer.byteLength === 0) {
+export async function parseMimiNoteBackup(
+  buffer: ArrayBuffer
+): Promise<Note[]> {
+  if (!buffer || buffer.byteLength === 0) {
     throw new Error("ファイルが空です。");
   }
 
@@ -803,9 +793,10 @@ export default function App() {
     new Set()
   );
   const [toastMessage, setToastMessage] = useState("");
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState<File | null>(
-    null
-  );
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState<{
+    buffer: ArrayBuffer;
+    name: string;
+  } | null>(null);
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<
@@ -1126,33 +1117,49 @@ export default function App() {
   }, [notes, showToast]);
 
   const handleRestore = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (file) {
-        setShowRestoreConfirm(file);
-        setShowSettingsPage(false);
+        try {
+          const buffer = await file.arrayBuffer();
+          setShowRestoreConfirm({buffer, name: file.name});
+          setShowSettingsPage(false);
+        } catch (e) {
+          console.error("File reading error:", e);
+          showToast("ファイルの読み込みに失敗しました。", 5000);
+          if (event.target) {
+            event.target.value = "";
+          }
+        }
       }
     },
-    []
+    [showToast]
   );
 
   const proceedWithRestore = useCallback(
-    async (file: File | null) => {
+    async (restoreData: {buffer: ArrayBuffer; name: string} | null) => {
       setShowRestoreConfirm(null);
-      if (!file) {
+      if (!restoreData || restoreData.buffer.byteLength === 0) {
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
+        if (restoreData) {
+          // only show toast if there was data but it was empty
+          showToast(`復元に失敗しました: ファイルが空です。`, 5000);
+        }
         return;
       }
+
+      const {buffer, name} = restoreData;
       showToast("バックアップファイルを解析中...", 10000);
 
       try {
         let importedNotes: Note[];
-        const fileName = file.name.toLowerCase();
+        const fileName = name.toLowerCase();
 
         if (fileName.endsWith(".json")) {
-          const parsedData = JSON.parse(await file.text());
+          const text = new TextDecoder().decode(buffer);
+          const parsedData = JSON.parse(text);
           if (
             Array.isArray(parsedData) &&
             parsedData.length > 0 &&
@@ -1169,7 +1176,7 @@ export default function App() {
             throw new Error("無効なJSONファイル形式です。");
           }
         } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
-          importedNotes = await parseMimiNoteBackup(file);
+          importedNotes = await parseMimiNoteBackup(buffer);
         } else {
           throw new Error("サポートされていないファイル形式です。");
         }
