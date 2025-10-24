@@ -209,8 +209,22 @@ export default function Settings({
         }
 
         const buffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
+        let bytes = new Uint8Array(buffer);
         let notes: Note[] = [];
+
+        // Decompress if it looks like a zlib-compressed file
+        if (bytes.length > 2 && bytes[0] === 0x78) {
+          try {
+            const pako = (await import("pako")).default;
+            bytes = pako.inflate(bytes);
+            showToast("圧縮されたファイルを展開しています...", 3000);
+          } catch (e) {
+            console.warn(
+              "zlib decompression failed, proceeding with original file data.",
+              e
+            );
+          }
+        }
 
         // 1. Try parsing as SQLite
         try {
@@ -269,7 +283,7 @@ export default function Settings({
             "SQLite parsing failed, attempting fallback text extraction:",
             sqliteError
           );
-          // Fallback to text extraction
+          // Fallback to text extraction on the original file buffer
           const text = new TextDecoder("utf-8", {fatal: false}).decode(buffer);
           const regex = /"text"\s*:\s*"((?:\\"|[^"])*)"/g;
           let match;

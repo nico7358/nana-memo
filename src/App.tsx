@@ -105,7 +105,22 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
     throw new Error("ファイルの読み込みに失敗しました。");
   }
 
-  const bytes = new Uint8Array(buffer);
+  let bytes = new Uint8Array(buffer);
+
+  // Decompress if it looks like a zlib-compressed file
+  if (bytes.length > 2 && bytes[0] === 0x78) {
+    try {
+      // Dynamically import pako for decompression
+      const pako = (await import("pako")).default;
+      bytes = pako.inflate(bytes);
+      console.log("Decompressed zlib-based backup file.");
+    } catch (e) {
+      console.warn(
+        "zlib decompression failed, proceeding with original file data.",
+        e
+      );
+    }
+  }
 
   // 1. Try parsing as SQLite DB
   try {
@@ -169,7 +184,7 @@ async function parseMimiNoteBackup(file: File): Promise<Note[]> {
       "SQLite parsing failed, attempting fallback text extraction:",
       sqliteError
     );
-    // 2. Fallback to text extraction
+    // 2. Fallback to text extraction on the original file buffer
     try {
       const text = new TextDecoder("utf-8", {fatal: false}).decode(buffer);
       // Look for JSON-like "text" fields, which is a common pattern in mimi note backups.
