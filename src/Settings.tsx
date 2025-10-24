@@ -119,7 +119,7 @@ const SettingsCard = ({
   children: React.ReactNode;
 }) => (
   <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 shadow-md transition-colors duration-300">
-    <h2 className="flex items-center text-lg font-bold mb-4 text-rose-500 dark:text-rose-400">
+    <h2 className="flex items-center text-lg font-bold mb-4 text-rose-500 dark:text-rose-400 font-kiwi">
       {icon}
       <span className="ml-2">{title}</span>
     </h2>
@@ -195,106 +195,108 @@ export default function Settings({
   const handleMimibkConvert = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
+      if (mimibkInputRef.current) {
+        mimibkInputRef.current.value = "";
+      }
       if (!file) return;
 
       setIsConverting(true);
       showToast("ミミノートの変換を開始します...", 10000);
 
-      // ✅【要件】スマートフォンでの互換性を高めるため、FileReaderを優先し、失敗時にfile.arrayBuffer()にフォールバック
-      const readFileAsArrayBuffer = (
-        fileToRead: File
-      ): Promise<ArrayBuffer> => {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            if (e.target?.result instanceof ArrayBuffer) {
-              resolve(e.target.result);
-            } else {
-              reject(new Error("FileReader did not return an ArrayBuffer."));
-            }
-          };
-          reader.onerror = (err) => {
-            console.warn(
-              "FileReader failed, falling back to file.arrayBuffer():",
-              err
-            );
-            if (typeof fileToRead.arrayBuffer === "function") {
-              fileToRead.arrayBuffer().then(resolve).catch(reject);
-            } else {
-              reject(new Error("File could not be read as ArrayBuffer."));
-            }
-          };
-          reader.readAsArrayBuffer(fileToRead);
-        });
-      };
-
       try {
-        const buffer = await readFileAsArrayBuffer(file);
-        if (buffer.byteLength === 0) {
-          throw new Error("ファイルが空か、読み込みに失敗しました。");
+        if (file.size === 0) {
+          throw new Error("ファイルが空です。");
         }
 
-        // ✅【要件】sql.jsを非同期で初期化し、wasmファイルのパスを指定
-        const initSqlJs = (await import("sql.js")).default;
-        const SQL = await initSqlJs({
-          locateFile: (f) => `/${f}`, // publicフォルダ直下のwasmファイルを参照
-        });
-
-        // データベースをメモリに読み込む
-        const db = new SQL.Database(new Uint8Array(buffer));
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
         let notes: Note[] = [];
 
+        // 1. Try parsing as SQLite
         try {
-          // ✅【要件】テーブル名を動的に特定 ('NOTE_TB'を優先)
-          const tablesResult = db.exec(
-            "SELECT name FROM sqlite_master WHERE type='table';"
+          const head = new TextDecoder().decode(bytes.slice(0, 16));
+          if (!head.startsWith("SQLite format 3")) {
+            throw new Error(
+              "SQLiteヘッダーが見つかりません。フォールバックします。"
+            );
+          }
+          const initSqlJs = (await import("sql.js")).default;
+          const SQL = await initSqlJs({locateFile: (f) => `/${f}`});
+          const db = new SQL.Database(bytes);
+
+          try {
+            const tablesResult = db.exec(
+              "SELECT name FROM sqlite_master WHERE type='table';"
+            );
+            if (!tablesResult.length || !tablesResult[0].values.length)
+              throw new Error("データベースにテーブルが見つかりません。");
+
+            const tables = tablesResult[0].values.flat() as string[];
+            const tableName =
+              tables.find((t) => t.toUpperCase() === "NOTE_TB") || tables[0];
+            if (!tableName) throw new Error("メモのテーブルが見つかりません。");
+
+            const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
+            if (rowsResult.length > 0) {
+              const rows = rowsResult[0].values;
+              const columns = rowsResult[0].columns;
+              notes = rows.map((row: any[]) => {
+                const obj: any = {};
+                columns.forEach((col, i) => (obj[col] = row[i]));
+                const createdAt = obj.creation_date
+                  ? new Date(obj.creation_date).getTime()
+                  : Date.now();
+                const updatedAt = obj.update_date
+                  ? new Date(obj.update_date).getTime()
+                  : createdAt;
+                return {
+                  id: String(obj._id || createdAt + Math.random()),
+                  content: String(obj.text || obj.title || ""),
+                  createdAt,
+                  updatedAt,
+                  isPinned: Boolean(obj.ear === 1),
+                  color: "text-slate-800 dark:text-slate-200",
+                  font: "font-sans",
+                  fontSize: "text-lg",
+                };
+              });
+            }
+          } finally {
+            db.close();
+          }
+        } catch (sqliteError: any) {
+          console.warn(
+            "SQLite parsing failed, attempting fallback text extraction:",
+            sqliteError
           );
-          if (!tablesResult.length || !tablesResult[0].values.length) {
-            throw new Error("データベースにテーブルが見つかりません。");
+          // Fallback to text extraction
+          const text = new TextDecoder("utf-8", {fatal: false}).decode(buffer);
+          const regex = /"text"\s*:\s*"((?:\\"|[^"])*)"/g;
+          let match;
+          let i = 0;
+          while ((match = regex.exec(text)) !== null) {
+            try {
+              const content = JSON.parse(`"${match[1]}"`); // Safely unescape
+              if (content && String(content).trim()) {
+                const now = Date.now() + i++;
+                notes.push({
+                  id: String(now),
+                  content: String(content),
+                  createdAt: now,
+                  updatedAt: now,
+                  isPinned: false,
+                  color: "text-slate-800 dark:text-slate-200",
+                  font: "font-sans",
+                  fontSize: "text-lg",
+                });
+              }
+            } catch (e) {
+              console.warn("Could not parse extracted text:", match[1]);
+            }
           }
-
-          const tables = tablesResult[0].values.flat() as string[];
-          const tableName =
-            tables.find((t) => t.toUpperCase() === "NOTE_TB") || tables[0];
-          if (!tableName) {
-            throw new Error("メモ用のテーブルが見つかりません。");
+          if (notes.length === 0) {
+            throw new Error(`DB解析に失敗しました: ${sqliteError.message}`);
           }
-
-          // テーブルから全データを取得し、nanamemo形式に変換
-          const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
-          if (rowsResult.length > 0) {
-            const rows = rowsResult[0].values;
-            const columns = rowsResult[0].columns;
-
-            notes = rows.map((row: any[]) => {
-              const obj: any = {};
-              columns.forEach((col, i) => (obj[col] = row[i]));
-
-              // 日付データをタイムスタンプに変換
-              const createdAt = obj.creation_date
-                ? new Date(obj.creation_date).getTime()
-                : Date.now();
-              const updatedAt = obj.update_date
-                ? new Date(obj.update_date).getTime()
-                : createdAt;
-
-              // nanamemoのNoteオブジェクトを作成
-              return {
-                id: String(obj._id || createdAt + Math.random()),
-                content: String(obj.text || obj.title || ""),
-                createdAt,
-                updatedAt,
-                isPinned: Boolean(obj.ear === 1),
-                // nanamemoのデフォルトスタイルを適用
-                color: "text-slate-800 dark:text-slate-200",
-                font: "font-sans",
-                fontSize: "text-lg",
-              };
-            });
-          }
-        } finally {
-          // データベース接続を閉じてメモリを解放
-          db.close();
         }
 
         if (notes.length === 0) {
@@ -302,20 +304,18 @@ export default function Settings({
           return;
         }
 
-        // ✅【要件】変換したデータをJSONファイルとしてダウンロードさせる
         const jsonString = JSON.stringify(notes, null, 2);
         const blob = new Blob([jsonString], {type: "application/json"});
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         const originalFileName = file.name.replace(/\.[^/.]+$/, "");
-        a.download = `${originalFileName}_nanamemo_converted.json`;
+        a.download = `${originalFileName}_nanamemo.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        // ✅【要件】トーストで結果を通知
         showToast(
           `${notes.length}件のメモを変換し、ダウンロードしました！`,
           5000
@@ -326,10 +326,6 @@ export default function Settings({
         showToast(`変換に失敗しました: ${message}`, 5000);
       } finally {
         setIsConverting(false);
-        // ファイル入力をリセットして、同じファイルを再度選択できるようにする
-        if (mimibkInputRef.current) {
-          mimibkInputRef.current.value = "";
-        }
       }
     },
     [showToast]
@@ -354,7 +350,7 @@ export default function Settings({
       <main className="flex-grow overflow-y-auto p-4 space-y-8">
         {installPrompt && (
           <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 shadow-md">
-            <h2 className="flex items-center text-lg font-bold mb-3 text-blue-600 dark:text-blue-400">
+            <h2 className="flex items-center text-lg font-bold mb-3 text-blue-600 dark:text-blue-400 font-kiwi">
               <InstallIcon className="w-5 h-5 mr-2" />
               <span>ホーム画面に追加</span>
             </h2>

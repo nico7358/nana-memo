@@ -97,155 +97,124 @@ const parseBackupDate = (dateInput: any): number | null => {
   return null;
 };
 
-// --- ファイルを確実にバイナリで読み込む関数（スマホ対応版） ---
-function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result instanceof ArrayBuffer) {
-        console.log(
-          "[Debug] FileReader loaded buffer:",
-          e.target.result.byteLength
-        );
-        resolve(e.target.result);
-      } else {
-        reject(new Error("ArrayBufferとして読み込めませんでした"));
-      }
-    };
-    reader.onerror = (err) => {
-      console.error("[Debug] FileReader error:", err);
-      reject(err);
-    };
-    reader.readAsArrayBuffer(file); // ✅ スマホでも確実にバイナリで読む
-  });
-}
-
 async function parseMimiNoteBackup(file: File): Promise<Note[]> {
+  if (!file) {
+    throw new Error("ファイルが選択されていません。");
+  }
+  if (file.size === 0) {
+    throw new Error("ファイルが空です。");
+  }
+
+  let buffer: ArrayBuffer;
   try {
-    // ✅ 1. `.mimibk` ファイルを強制的にバイナリとして読み込む (Blob -> FileReader フォールバック)
-    const getBuffer = async (fileToRead: File): Promise<ArrayBuffer> => {
-      try {
-        console.log("[Debug] Attempting to read file via Blob.slice method...");
-        const blob = fileToRead.slice(
-          0,
-          fileToRead.size,
-          "application/octet-stream"
-        );
-        const buffer = await blob.arrayBuffer();
-        if (buffer.byteLength > 0) {
-          console.log("[Debug] Read file via Blob.slice successful.");
-          return buffer;
-        }
-        console.warn(
-          "[Debug] Blob.slice returned empty buffer, falling back to FileReader."
-        );
-      } catch (e) {
-        console.warn(
-          "[Debug] Blob.slice method failed, falling back to FileReader:",
-          e
-        );
-      }
+    buffer = await file.arrayBuffer();
+  } catch (e) {
+    console.error("File reading error:", e);
+    throw new Error("ファイルの読み込みに失敗しました。");
+  }
 
-      console.log("[Debug] Using FileReader as fallback.");
-      return readFileAsArrayBuffer(fileToRead); // 既存のヘルパー関数にフォールバック
-    };
+  const bytes = new Uint8Array(buffer);
 
-    const rawBuffer = await getBuffer(file);
-    if (rawBuffer.byteLength === 0) {
-      throw new Error("ファイルの読み込みに失敗し、データが空です。");
-    }
-    const buffer = new Uint8Array(rawBuffer);
-
-    // ✅ 2. SQLite 解析処理 - ヘッダー検証
-    let head = "";
-    for (let i = 0; i < 16 && i < buffer.length; i++) {
-      head += String.fromCharCode(buffer[i]);
-    }
-    console.log("[Debug] File header:", head);
+  // 1. Try parsing as SQLite DB
+  try {
+    const head = new TextDecoder().decode(bytes.slice(0, 16));
     if (!head.startsWith("SQLite format 3")) {
-      throw new Error("これは有効なSQLiteファイルではありません。");
+      throw new Error("SQLiteヘッダーが見つかりません。");
     }
 
-    // ✅ 2. SQLite 解析処理 - DB初期化 (動的インポート)
     const initSqlJs = (await import("sql.js")).default;
-    (window as any).Module = {noInitialRun: true, noWorker: true};
     const SQL = await initSqlJs({
       locateFile: (f) => `/${f}`,
-      useWorker: false,
     });
 
-    let db: any;
+    const db = new SQL.Database(bytes);
     try {
-      db = new SQL.Database(buffer);
-
-      // ✅ 2. SQLite 解析処理 - テーブル検出
       const result = db.exec(
         "SELECT name FROM sqlite_master WHERE type='table';"
       );
       if (!result.length) throw new Error("DB内にテーブルが見つかりません。");
 
       const tables = result.flatMap((t: any) => t.values.map((v: any) => v[0]));
-      console.log(`[Main Thread] Tables detected: ${tables.join(", ")}`);
-
-      // 'NOTE_TB' を優先的に探す
       const tableName =
         tables.find((t: string) => t.toUpperCase() === "NOTE_TB") ||
         tables.find((t: string) => t.toLowerCase().includes("note")) ||
         tables[0];
       if (!tableName) throw new Error("メモのテーブルが見つかりません。");
 
-      // ✅ 2. SQLite 解析処理 - 行の生成
       const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
-      if (!rowsResult.length) return []; // データが空の場合は空配列を返す
+      if (!rowsResult.length) return []; // No data is not an error
 
       const rows = rowsResult[0].values;
       const columns = rowsResult[0].columns;
-      console.log(
-        `[Main Thread] ${rows.length} rows fetched from ${tableName}`
-      );
 
       const notes: Note[] = rows.map((row: any[]) => {
         const obj: any = {};
         columns.forEach((col, i) => (obj[col] = row[i]));
-
         const createdAt = obj.creation_date
           ? new Date(obj.creation_date).getTime()
           : Date.now();
         const updatedAt = obj.update_date
           ? new Date(obj.update_date).getTime()
           : createdAt;
-
         return {
-          id: String(obj._id || createdAt + Math.random()), // IDがなければ生成
+          id: String(obj._id || createdAt + Math.random()),
           content: String(obj.text || obj.title || ""),
           createdAt,
           updatedAt,
           isPinned: Boolean(obj.ear === 1),
-          // Default styles
           color: "text-slate-800 dark:text-slate-200",
           font: "font-sans",
           fontSize: "text-lg",
         };
       });
 
-      console.log("[Main Thread] Notes parsed successfully.");
       return notes;
     } finally {
-      if (db) {
-        db.close();
-        console.log("[Main Thread] Database closed.");
-      }
+      db.close();
     }
-  } catch (error) {
-    console.error(
-      "ミミノートのバックアップ解析中にエラーが発生しました:",
-      error
+  } catch (sqliteError: any) {
+    console.warn(
+      "SQLite parsing failed, attempting fallback text extraction:",
+      sqliteError
     );
-    throw new Error(
-      `ミミノートのバックアップ解析に失敗しました: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    // 2. Fallback to text extraction
+    try {
+      const text = new TextDecoder("utf-8", {fatal: false}).decode(buffer);
+      // Look for JSON-like "text" fields, which is a common pattern in mimi note backups.
+      const regex = /"text"\s*:\s*"((?:\\"|[^"])*)"/g;
+      let match;
+      const extractedNotes: Note[] = [];
+      let i = 0;
+
+      while ((match = regex.exec(text)) !== null) {
+        try {
+          const content = JSON.parse(`"${match[1]}"`); // Safely unescape string content
+          if (content && String(content).trim()) {
+            const now = Date.now() + i++;
+            extractedNotes.push({
+              id: String(now),
+              content: String(content),
+              createdAt: now,
+              updatedAt: now,
+              isPinned: false,
+              color: "text-slate-800 dark:text-slate-200",
+              font: "font-sans",
+              fontSize: "text-lg",
+            });
+          }
+        } catch (e) {
+          console.warn("Could not parse extracted text:", match[1]);
+        }
+      }
+
+      if (extractedNotes.length > 0) {
+        return extractedNotes;
+      }
+      throw new Error("テキストデータからのメモ抽出に失敗しました。");
+    } catch (fallbackError) {
+      console.error("Fallback text extraction failed:", fallbackError);
+      throw new Error(`DBの解析に失敗しました: ${sqliteError.message}`);
+    }
   }
 }
 
@@ -1187,7 +1156,6 @@ export default function App() {
             throw new Error("無効なJSONファイル形式です。");
           }
         } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
-          // ✅ REFACTOR: Worker logic is removed. Call main thread function directly.
           importedNotes = await parseMimiNoteBackup(file);
         } else {
           throw new Error("サポートされていないファイル形式です。");
@@ -1212,18 +1180,9 @@ export default function App() {
 
         showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
       } catch (error: any) {
-        let errorMessage = "復元に失敗しました。";
-        try {
-          const parsedError = JSON.parse(error.message);
-          if (parsedError && parsedError.message) {
-            errorMessage += `: ${parsedError.message}`;
-          } else {
-            errorMessage += `: ${error.message}`;
-          }
-        } catch (e) {
-          errorMessage += `: ${error.message}`;
-        }
-        showToast(errorMessage, 5000);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        showToast(`復元に失敗しました: ${errorMessage}`, 5000);
         console.error("Failed to restore notes:", error);
       }
     },
