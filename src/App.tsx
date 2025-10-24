@@ -89,7 +89,8 @@ const parseBackupDate = (dateInput: any): number | null => {
   return null;
 };
 
-async function parseMimiNoteBackup(file: File): Promise<Note[]> {
+// --- Unified Backup Parsing Logic (Exported) ---
+export async function parseMimiNoteBackup(file: File): Promise<Note[]> {
   if (!file) {
     throw new Error("ファイルが選択されていません。");
   }

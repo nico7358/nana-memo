@@ -1,4 +1,5 @@
 import React, {useCallback, useState, useRef} from "react";
+import {parseMimiNoteBackup} from "@/App.tsx"; // Import the unified parser
 
 // --- 型定義 ---
 
@@ -204,114 +205,7 @@ export default function Settings({
       showToast("ミミノートの変換を開始します...", 10000);
 
       try {
-        const buffer = await file.arrayBuffer();
-        if (buffer.byteLength === 0) {
-          throw new Error("ファイルが空です。");
-        }
-
-        let bytes = new Uint8Array(buffer);
-        let notes: Note[] = [];
-
-        // Decompress if it looks like a zlib-compressed file
-        if (bytes.length > 2 && bytes[0] === 0x78) {
-          try {
-            const pako = (await import("pako")).default;
-            bytes = pako.inflate(bytes);
-            showToast("圧縮されたファイルを展開しています...", 3000);
-          } catch (e) {
-            console.warn(
-              "zlib decompression failed, proceeding with original file data.",
-              e
-            );
-          }
-        }
-
-        // 1. Try parsing as SQLite
-        try {
-          const head = new TextDecoder().decode(bytes.slice(0, 16));
-          if (!head.startsWith("SQLite format 3")) {
-            throw new Error(
-              "SQLiteヘッダーが見つかりません。フォールバックします。"
-            );
-          }
-          const initSqlJs = (await import("sql.js")).default;
-          const SQL = await initSqlJs({locateFile: (f) => `/${f}`});
-          const db = new SQL.Database(bytes);
-
-          try {
-            const tablesResult = db.exec(
-              "SELECT name FROM sqlite_master WHERE type='table';"
-            );
-            if (!tablesResult.length || !tablesResult[0].values.length)
-              throw new Error("データベースにテーブルが見つかりません。");
-
-            const tables = tablesResult[0].values.flat() as string[];
-            const tableName =
-              tables.find((t) => t.toUpperCase() === "NOTE_TB") || tables[0];
-            if (!tableName) throw new Error("メモのテーブルが見つかりません。");
-
-            const rowsResult = db.exec(`SELECT * FROM "${tableName}";`);
-            if (rowsResult.length > 0) {
-              const rows = rowsResult[0].values;
-              const columns = rowsResult[0].columns;
-              notes = rows.map((row: any[]) => {
-                const obj: any = {};
-                columns.forEach((col, i) => (obj[col] = row[i]));
-                const createdAt = obj.creation_date
-                  ? new Date(obj.creation_date).getTime()
-                  : Date.now();
-                const updatedAt = obj.update_date
-                  ? new Date(obj.update_date).getTime()
-                  : createdAt;
-                return {
-                  id: String(obj._id || createdAt + Math.random()),
-                  content: String(obj.text || obj.title || ""),
-                  createdAt,
-                  updatedAt,
-                  isPinned: Boolean(obj.ear === 1),
-                  color: "text-slate-800 dark:text-slate-200",
-                  font: "font-sans",
-                  fontSize: "text-lg",
-                };
-              });
-            }
-          } finally {
-            db.close();
-          }
-        } catch (sqliteError: any) {
-          console.warn(
-            "SQLite parsing failed, attempting fallback text extraction:",
-            sqliteError
-          );
-          // Fallback to text extraction on the original file buffer
-          const text = new TextDecoder("utf-8", {fatal: false}).decode(buffer);
-          const regex = /"text"\s*:\s*"((?:\\"|[^"])*)"/g;
-          let match;
-          let i = 0;
-          while ((match = regex.exec(text)) !== null) {
-            try {
-              const content = JSON.parse(`"${match[1]}"`); // Safely unescape
-              if (content && String(content).trim()) {
-                const now = Date.now() + i++;
-                notes.push({
-                  id: String(now),
-                  content: String(content),
-                  createdAt: now,
-                  updatedAt: now,
-                  isPinned: false,
-                  color: "text-slate-800 dark:text-slate-200",
-                  font: "font-sans",
-                  fontSize: "text-lg",
-                });
-              }
-            } catch (e) {
-              console.warn("Could not parse extracted text:", match[1]);
-            }
-          }
-          if (notes.length === 0) {
-            throw new Error(`DB解析に失敗しました: ${sqliteError.message}`);
-          }
-        }
+        const notes = await parseMimiNoteBackup(file);
 
         if (notes.length === 0) {
           showToast("変換対象のメモが見つかりませんでした。", 3000);
