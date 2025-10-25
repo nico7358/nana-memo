@@ -88,6 +88,20 @@ declare global {
     SpeechRecognition: new () => SpeechRecognition;
     webkitSpeechRecognition: new () => SpeechRecognition;
     launchQueue?: LaunchQueue;
+    showOpenFilePicker(
+      options?: OpenFilePickerOptions
+    ): Promise<FileSystemFileHandle[]>;
+  }
+  interface OpenFilePickerOptions {
+    multiple?: boolean;
+    excludeAcceptAllOption?: boolean;
+    types?: {
+      description?: string;
+      accept: Record<string, string | string[]>;
+    }[];
+  }
+  interface FileSystemFileHandle {
+    getFile(): Promise<File>;
   }
 }
 
@@ -803,7 +817,6 @@ export default function App() {
     }
   });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
@@ -1119,35 +1132,47 @@ export default function App() {
     showToast("バックアップファイルを保存しました。");
   }, [notes, showToast]);
 
-  const handleRestore = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (file) {
-        try {
-          const buffer = await file.arrayBuffer();
-          setShowRestoreConfirm({buffer, name: file.name});
-          setShowSettingsPage(false);
-        } catch (e) {
-          console.error("File reading error:", e);
-          showToast("ファイルの読み込みに失敗しました。", 5000);
-          if (event.target) {
-            event.target.value = "";
-          }
-        }
+  const handleRestoreFromFilePicker = useCallback(async () => {
+    if (!("showOpenFilePicker" in window)) {
+      showToast(
+        "お使いのブラウザはFile System Access APIをサポートしていません。",
+        5000
+      );
+      return;
+    }
+
+    try {
+      const [fileHandle] = await window.showOpenFilePicker({
+        types: [
+          {
+            description: "Backup Files",
+            accept: {
+              "application/json": [".json"],
+              "application/octet-stream": [".mimibk", ".db"],
+            },
+          },
+        ],
+        multiple: false,
+      });
+      const file = await fileHandle.getFile();
+      const buffer = await file.arrayBuffer();
+      setShowRestoreConfirm({buffer, name: file.name});
+      setShowSettingsPage(false);
+    } catch (error) {
+      if ((error as DOMException).name === "AbortError") {
+        console.log("File picker was cancelled by the user.");
+      } else {
+        console.error("File picker error:", error);
+        showToast("ファイルの読み込みに失敗しました。", 5000);
       }
-    },
-    [showToast]
-  );
+    }
+  }, [showToast]);
 
   const proceedWithRestore = useCallback(
     async (restoreData: {buffer: ArrayBuffer; name: string} | null) => {
       setShowRestoreConfirm(null);
       if (!restoreData || restoreData.buffer.byteLength === 0) {
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
         if (restoreData) {
-          // only show toast if there was data but it was empty
           showToast(`復元に失敗しました: ファイルが空です。`, 5000);
         }
         return;
@@ -1210,10 +1235,6 @@ export default function App() {
           error instanceof Error ? error.message : String(error);
         showToast(`復元に失敗しました: ${errorMessage}`, 5000);
         console.error("Failed to restore notes:", error);
-      } finally {
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
       }
     },
     [setNotes, showToast]
@@ -1221,37 +1242,25 @@ export default function App() {
 
   const cancelRestore = useCallback(() => {
     setShowRestoreConfirm(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   }, []);
 
   if (showSettingsPage) {
     return (
-      <>
-        <Settings
-          onClose={() => setShowSettingsPage(false)}
-          isDarkMode={isDarkMode}
-          setIsDarkMode={setIsDarkMode}
-          onBackup={handleBackup}
-          onRestoreTrigger={() => fileInputRef.current?.click()}
-          installPrompt={installPrompt}
-          showToast={showToast}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          isListLinkifyEnabled={isLinkifyEnabled}
-          setIsListLinkifyEnabled={setIsLinkifyEnabled}
-          isEditorLinkifyEnabled={isEditorLinkifyEnabled}
-          setIsEditorLinkifyEnabled={setIsEditorLinkifyEnabled}
-        />
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleRestore}
-          className="hidden"
-          accept=".json,.mimibk,.db,application/octet-stream,*/*"
-        />
-      </>
+      <Settings
+        onClose={() => setShowSettingsPage(false)}
+        isDarkMode={isDarkMode}
+        setIsDarkMode={setIsDarkMode}
+        onBackup={handleBackup}
+        onRestoreTrigger={handleRestoreFromFilePicker}
+        installPrompt={installPrompt}
+        showToast={showToast}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        isListLinkifyEnabled={isLinkifyEnabled}
+        setIsListLinkifyEnabled={setIsLinkifyEnabled}
+        isEditorLinkifyEnabled={isEditorLinkifyEnabled}
+        setIsEditorLinkifyEnabled={setIsEditorLinkifyEnabled}
+      />
     );
   }
 

@@ -1,6 +1,5 @@
 import React, {useCallback, useState} from "react";
 import {parseMimiNoteBackup} from "@/App.tsx";
-import pako from "pako";
 
 // --- 型定義 ---
 interface BeforeInstallPromptEvent extends Event {
@@ -123,26 +122,6 @@ const InstallIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M17 1H7c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-5 15l-4-4h2.5V8h3v4H16l-4 4z" />
   </svg>
 ));
-const CodeIcon = React.memo<{className?: string}>(({className}) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    <path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" />
-  </svg>
-));
-const CloseIcon = React.memo<{className?: string}>(({className}) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-  >
-    <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-  </svg>
-));
 
 // --- UI部品 ---
 const SettingsCard = ({
@@ -218,8 +197,6 @@ export default function Settings({
   setIsEditorLinkifyEnabled,
 }: SettingsProps) {
   const [isConverting, setIsConverting] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   const handleInstallClick = useCallback(() => {
     if (!installPrompt) return;
@@ -240,90 +217,6 @@ export default function Settings({
     ],
     multiple: false,
   };
-
-  // Fileオブジェクトを受け取って解析するコアロジック
-  const analyzeDatabaseFile = useCallback(
-    async (file: File) => {
-      setIsAnalyzing(true);
-      setAnalysisResult(null);
-      showToast("ファイルを解析中...", 5000);
-
-      try {
-        const buffer = await file.arrayBuffer();
-        if (!buffer || buffer.byteLength === 0) {
-          throw new Error("ファイルが空か、読み込めませんでした。");
-        }
-
-        let bytes = new Uint8Array(buffer);
-
-        if (bytes.length > 2 && bytes[0] === 0x78) {
-          try {
-            bytes = pako.inflate(bytes);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          } catch (e) {
-            console.warn(
-              "zlib decompression failed, proceeding with original data."
-            );
-          }
-        }
-
-        const initSqlJs = (await import("sql.js")).default;
-        const SQL = await initSqlJs({
-          locateFile: (file) => `/${file}`,
-        });
-
-        const db = new SQL.Database(bytes);
-        try {
-          const result = db.exec(
-            "SELECT name FROM sqlite_master WHERE type='table';"
-          );
-          if (result.length === 0 || result[0].values.length === 0) {
-            setAnalysisResult("データベースにテーブルが見つかりませんでした。");
-          } else {
-            // テーブル名のみを抽出し、見やすいJSON形式に整形
-            const tableNames = result[0].values.map((row) => row[0]);
-            setAnalysisResult(JSON.stringify({tables: tableNames}, null, 2));
-          }
-        } finally {
-          db.close();
-        }
-
-        showToast("解析が完了しました。", 3000);
-      } catch (error) {
-        console.error("DB解析エラー:", error);
-        const message = error instanceof Error ? error.message : String(error);
-        setAnalysisResult(`エラーが発生しました:\n${message}`);
-        showToast(`解析に失敗しました。`, 5000);
-      } finally {
-        setIsAnalyzing(false);
-      }
-    },
-    [showToast]
-  );
-
-  // DBインスペクターボタンのクリックハンドラ
-  const handleAnalysisPickerClick = useCallback(async () => {
-    if (!("showOpenFilePicker" in window)) {
-      showToast(
-        "お使いのブラウザはFile System Access APIをサポートしていません。",
-        5000
-      );
-      return;
-    }
-
-    try {
-      const [fileHandle] = await window.showOpenFilePicker(filePickerOptions);
-      const file = await fileHandle.getFile();
-      await analyzeDatabaseFile(file);
-    } catch (error) {
-      if ((error as DOMException).name === "AbortError") {
-        console.log("File picker was cancelled by the user.");
-      } else {
-        console.error("File System Access API error:", error);
-        showToast("ファイルを開けませんでした。", 5000);
-      }
-    }
-  }, [analyzeDatabaseFile, showToast, filePickerOptions]);
 
   // Fileオブジェクトを受け取って変換するコアロジック
   const convertMimibkFile = useCallback(
@@ -493,46 +386,6 @@ export default function Settings({
               </p>
             </div>
           </div>
-        </SettingsCard>
-
-        <SettingsCard
-          title="データベースツール"
-          icon={<CodeIcon className="w-5 h-5" />}
-        >
-          <div>
-            <h3 className="font-bold text-slate-800 dark:text-slate-200">
-              DBインスペクター
-            </h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 mb-3">
-              `.mimibk` や `.db` ファイルを選択して、テーブル構造を解析します。
-            </p>
-            <button
-              onClick={handleAnalysisPickerClick}
-              disabled={isAnalyzing}
-              className="w-full flex items-center justify-center h-14 px-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <UploadIcon className="w-5 h-5 mr-2" />
-              {isAnalyzing ? "解析中..." : "ファイルを選択して解析"}
-            </button>
-          </div>
-          {analysisResult && (
-            <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-bold text-slate-800 dark:text-slate-200">
-                  解析結果
-                </h4>
-                <button
-                  onClick={() => setAnalysisResult(null)}
-                  className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700"
-                >
-                  <CloseIcon className="w-5 h-5 text-slate-500" />
-                </button>
-              </div>
-              <pre className="text-sm bg-white dark:bg-slate-800 p-3 rounded-md overflow-x-auto max-h-64 whitespace-pre-wrap break-all">
-                <code>{analysisResult}</code>
-              </pre>
-            </div>
-          )}
         </SettingsCard>
 
         <SettingsCard
