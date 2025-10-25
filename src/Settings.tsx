@@ -2,6 +2,20 @@ import React, {useCallback, useState, useRef} from "react";
 import {parseMimiNoteBackup} from "@/App.tsx"; // Import the unified parser
 import pako from "pako";
 
+/* ---------- Android向け安定版ファイル読み込み関数 ---------- */
+async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+      else reject(new Error("ファイルの読み込みに失敗しました"));
+    };
+    reader.onerror = () => reject(reader.error);
+    // Androidではイベント遅延を挟むことで安定
+    setTimeout(() => reader.readAsArrayBuffer(file), 100);
+  });
+}
+
 // --- 型定義 ---
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: Array<string>;
@@ -223,9 +237,11 @@ export default function Settings({
       showToast("ファイルを解析中...", 5000);
 
       try {
-        const buffer = await file.arrayBuffer();
+        const buffer = await readFileAsArrayBuffer(file);
         if (!buffer || buffer.byteLength === 0) {
-          throw new Error("ファイルが空か、読み込めませんでした。");
+          throw new Error(
+            "ファイルが空です。PWA版ではなくブラウザでお試しください。"
+          );
         }
 
         let bytes = new Uint8Array(buffer);
@@ -299,7 +315,12 @@ export default function Settings({
       showToast("ミミノートの変換を開始します...", 10000);
 
       try {
-        const buffer = await file.arrayBuffer();
+        const buffer = await readFileAsArrayBuffer(file);
+        if (!buffer || buffer.byteLength === 0) {
+          throw new Error(
+            "ファイルが空です。PWAでは動作しない場合があります。ブラウザで試してください。"
+          );
+        }
         const notes = await parseMimiNoteBackup(buffer);
 
         if (notes.length === 0) {
@@ -435,7 +456,7 @@ export default function Settings({
                 ref={mimibkInputRef}
                 onChange={handleMimibkConvert}
                 className="hidden"
-                accept=".mimibk,.db,application/octet-stream,*/*"
+                accept=".mimibk,.db,application/octet-stream,application/x-sqlite3"
               />
             </div>
             <div className="flex items-start p-3 mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
@@ -472,7 +493,7 @@ export default function Settings({
               ref={analysisInputRef}
               onChange={handleAnalysis}
               className="hidden"
-              accept=".mimibk,.db,application/octet-stream,*/*"
+              accept=".mimibk,.db,application/octet-stream,application/x-sqlite3"
             />
           </div>
           {analysisResult && (
