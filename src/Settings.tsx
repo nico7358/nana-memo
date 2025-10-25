@@ -100,6 +100,21 @@ async function openFile(options: OpenFilePickerOptions): Promise<File> {
   });
 }
 
+// --- ファイル読み込みヘルパー (FileReaderを使用) ---
+// file.arrayBuffer() が不安定なモバイル環境向けの互換性対策
+function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(reader.result as ArrayBuffer);
+    };
+    reader.onerror = () => {
+      reject(reader.error);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 // --- アイコンコンポーネント ---
 const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
   <svg
@@ -331,9 +346,9 @@ export default function Settings({
         ],
         multiple: false,
       });
-      const buffer = await file.arrayBuffer();
+      const buffer = await readFileAsArrayBuffer(file);
       if (buffer.byteLength === 0) {
-        showToast("ファイルが空です。", 5000);
+        showToast("ファイルが空か、読み込みに失敗しました。", 5000);
         return;
       }
       setShowRestoreConfirm({buffer, name: file.name});
@@ -364,10 +379,10 @@ export default function Settings({
         ],
         multiple: false,
       });
-      const buffer = await file.arrayBuffer();
+      const buffer = await readFileAsArrayBuffer(file);
 
       if (buffer.byteLength === 0) {
-        throw new Error("ファイルが空です。");
+        throw new Error("ファイルが空か、読み込みに失敗しました。");
       }
 
       const notes = await parseMimiNoteBackup(buffer);
