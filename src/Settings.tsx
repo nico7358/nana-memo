@@ -1,4 +1,4 @@
-import React, {useCallback, useState, useEffect} from "react";
+import React, {useState, useEffect} from "react";
 import {type Note, parseMimiNoteBackup} from "@/App.tsx";
 
 // --- 型定義 ---
@@ -212,7 +212,7 @@ export default function Settings({
     setShowBackupBadge(needsBackup);
   }, [notes]);
 
-  const handleInstallClick = useCallback(() => {
+  const handleInstallClick = () => {
     if (!installPrompt) return;
     installPrompt.prompt();
     installPrompt.userChoice.then(({outcome}) => {
@@ -220,9 +220,9 @@ export default function Settings({
         showToast("アプリをインストールしました！", 3000);
       }
     });
-  }, [installPrompt, showToast]);
+  };
 
-  const handleBackup = useCallback(() => {
+  const handleBackup = () => {
     const formattedDate = new Date()
       .toISOString()
       .slice(0, 10)
@@ -246,9 +246,9 @@ export default function Settings({
     setShowBackupBadge(false);
     onClose();
     showToast("バックアップファイルを保存しました。");
-  }, [notes, showToast, onClose]);
+  };
 
-  const handleRestore = useCallback(async () => {
+  const handleRestore = async () => {
     if (!("showOpenFilePicker" in window)) {
       showToast(
         "お使いのブラウザはFile System Access APIをサポートしていません。",
@@ -281,9 +281,9 @@ export default function Settings({
         showToast("ファイルの読み込みに失敗しました。", 5000);
       }
     }
-  }, [showToast]);
+  };
 
-  const handleConvert = useCallback(async () => {
+  const handleConvert = async () => {
     if (!("showOpenFilePicker" in window)) {
       showToast(
         "お使いのブラウザはFile System Access APIをサポートしていません。",
@@ -344,83 +344,82 @@ export default function Settings({
     } finally {
       setIsConverting(false);
     }
-  }, [showToast]);
+  };
 
-  const proceedWithRestore = useCallback(
-    async (restoreData: {buffer: ArrayBuffer; name: string} | null) => {
-      setShowRestoreConfirm(null);
-      if (!restoreData || restoreData.buffer.byteLength === 0) {
-        if (restoreData) {
-          showToast(`復元に失敗しました: ファイルが空です。`, 5000);
-        }
-        return;
-      }
-
-      const {buffer, name} = restoreData;
-      showToast("バックアップファイルを解析中...", 10000);
-
-      try {
-        let importedNotes: Note[];
-        const fileName = name.toLowerCase();
-
-        if (fileName.endsWith(".json")) {
-          const text = new TextDecoder().decode(buffer);
-          const parsedData = JSON.parse(text);
-          if (
-            Array.isArray(parsedData) &&
-            (parsedData.length === 0 || "content" in parsedData[0])
-          ) {
-            importedNotes = parsedData.map((n: Partial<Note>) => ({
-              id: n.id || String(Date.now() + Math.random()),
-              content: n.content || "",
-              createdAt: n.createdAt || Date.now(),
-              updatedAt: n.updatedAt || Date.now(),
-              isPinned: n.isPinned || false,
-              color: n.color || "text-slate-800 dark:text-slate-200",
-              font: n.font || "font-sans",
-              fontSize: n.fontSize || "text-lg",
-            }));
-          } else {
-            throw new Error("無効なJSONファイル形式です。");
-          }
-        } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
-          importedNotes = await parseMimiNoteBackup(buffer);
-        } else {
-          throw new Error("サポートされていないファイル形式です。");
-        }
-
-        setNotes((currentNotes) => {
-          const notesMap = new Map<string, Note>();
-          for (const note of currentNotes) {
-            notesMap.set(note.id, note);
-          }
-          for (const importedNote of importedNotes) {
-            const existingNote = notesMap.get(importedNote.id);
-            if (
-              !existingNote ||
-              importedNote.updatedAt >= existingNote.updatedAt
-            ) {
-              notesMap.set(importedNote.id, importedNote);
-            }
-          }
-          return Array.from(notesMap.values());
-        });
-
-        onClose();
-        showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
-      } catch (error: unknown) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        showToast(`復元に失敗しました: ${errorMessage}`, 5000);
-        console.error("Failed to restore notes:", error);
-      }
-    },
-    [setNotes, showToast, onClose]
-  );
-
-  const cancelRestore = useCallback(() => {
+  const proceedWithRestore = async (
+    restoreData: {buffer: ArrayBuffer; name: string} | null
+  ) => {
     setShowRestoreConfirm(null);
-  }, []);
+    if (!restoreData || restoreData.buffer.byteLength === 0) {
+      if (restoreData) {
+        showToast(`復元に失敗しました: ファイルが空です。`, 5000);
+      }
+      return;
+    }
+
+    const {buffer, name} = restoreData;
+    showToast("バックアップファイルを解析中...", 10000);
+
+    try {
+      let importedNotes: Note[];
+      const fileName = name.toLowerCase();
+
+      if (fileName.endsWith(".json")) {
+        const text = new TextDecoder().decode(buffer);
+        const parsedData = JSON.parse(text);
+        if (
+          Array.isArray(parsedData) &&
+          (parsedData.length === 0 || "content" in parsedData[0])
+        ) {
+          importedNotes = parsedData.map((n: Partial<Note>) => ({
+            id: n.id || String(Date.now() + Math.random()),
+            content: n.content || "",
+            createdAt: n.createdAt || Date.now(),
+            updatedAt: n.updatedAt || Date.now(),
+            isPinned: n.isPinned || false,
+            color: n.color || "text-slate-800 dark:text-slate-200",
+            font: n.font || "font-sans",
+            fontSize: n.fontSize || "text-lg",
+          }));
+        } else {
+          throw new Error("無効なJSONファイル形式です。");
+        }
+      } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
+        importedNotes = await parseMimiNoteBackup(buffer);
+      } else {
+        throw new Error("サポートされていないファイル形式です。");
+      }
+
+      setNotes((currentNotes) => {
+        const notesMap = new Map<string, Note>();
+        for (const note of currentNotes) {
+          notesMap.set(note.id, note);
+        }
+        for (const importedNote of importedNotes) {
+          const existingNote = notesMap.get(importedNote.id);
+          if (
+            !existingNote ||
+            importedNote.updatedAt >= existingNote.updatedAt
+          ) {
+            notesMap.set(importedNote.id, importedNote);
+          }
+        }
+        return Array.from(notesMap.values());
+      });
+
+      onClose();
+      showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      showToast(`復元に失敗しました: ${errorMessage}`, 5000);
+      console.error("Failed to restore notes:", error);
+    }
+  };
+
+  const cancelRestore = () => {
+    setShowRestoreConfirm(null);
+  };
 
   return (
     <>

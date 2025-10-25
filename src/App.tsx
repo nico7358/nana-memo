@@ -1138,7 +1138,6 @@ export default function App() {
         sortBy={sortBy}
         setSortBy={setSortBy}
         isListLinkifyEnabled={isLinkifyEnabled}
-        // FIX: Pass the correct state setter 'setIsLinkifyEnabled' for the 'setIsListLinkifyEnabled' prop.
         setIsListLinkifyEnabled={setIsLinkifyEnabled}
         isEditorLinkifyEnabled={isEditorLinkifyEnabled}
         setIsEditorLinkifyEnabled={setIsEditorLinkifyEnabled}
