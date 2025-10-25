@@ -4,7 +4,7 @@ import React, {useState, useEffect, useMemo, useRef, useCallback} from "react";
 import Settings from "@/Settings.tsx";
 
 // --- Type Definitions ---
-type Note = {
+export type Note = {
   id: string;
   content: string;
   createdAt: number;
@@ -786,11 +786,6 @@ export default function App() {
     new Set()
   );
   const [toastMessage, setToastMessage] = useState("");
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState<{
-    buffer: ArrayBuffer;
-    name: string;
-  } | null>(null);
-  const [isConverting, setIsConverting] = useState(false);
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<
@@ -872,16 +867,34 @@ export default function App() {
           const fileHandle = launchParams.files[0];
           const file = await fileHandle.getFile();
           const buffer = await file.arrayBuffer();
+          const importedNotes = await parseMimiNoteBackup(buffer);
 
-          // 復元確認モーダルを表示
-          setShowRestoreConfirm({buffer, name: file.name});
+          setNotes((currentNotes) => {
+            const notesMap = new Map<string, Note>();
+            for (const note of currentNotes) {
+              notesMap.set(note.id, note);
+            }
+            for (const importedNote of importedNotes) {
+              const existingNote = notesMap.get(importedNote.id);
+              if (
+                !existingNote ||
+                importedNote.updatedAt >= existingNote.updatedAt
+              ) {
+                notesMap.set(importedNote.id, importedNote);
+              }
+            }
+            return Array.from(notesMap.values());
+          });
+
+          showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
         } catch (e) {
           console.error("File Handling API error:", e);
-          showToast("ファイルの処理中にエラーが発生しました。", 5000);
+          const message = e instanceof Error ? e.message : String(e);
+          showToast(`ファイルの処理中にエラーが発生しました: ${message}`, 5000);
         }
       });
     }
-  }, [showToast]);
+  }, [showToast, setNotes]);
 
   useEffect(() => {
     const lastBackupTime = parseInt(
@@ -1112,217 +1125,20 @@ export default function App() {
     showToast,
   ]);
 
-  const handleBackup = useCallback(() => {
-    const formattedDate = new Date()
-      .toISOString()
-      .slice(0, 10)
-      .replace(/-/g, "");
-    const filename = `nanamemo_backup_${formattedDate}.json`;
-    const dataStr = JSON.stringify(notes, null, 2);
-    const linkElement = document.createElement("a");
-    linkElement.href =
-      "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
-    linkElement.download = filename;
-    linkElement.click();
-    localStorage.setItem(
-      "nana-memo-last-backup-timestamp",
-      Date.now().toString()
-    );
-    setShowBackupBadge(false);
-    setShowSettingsPage(false);
-    showToast("バックアップファイルを保存しました。");
-  }, [notes, showToast]);
-
-  const handleRestoreFromFilePicker = useCallback(async () => {
-    if (!("showOpenFilePicker" in window)) {
-      showToast(
-        "お使いのブラウザはFile System Access APIをサポートしていません。",
-        5000
-      );
-      return;
-    }
-
-    try {
-      const [fileHandle] = await window.showOpenFilePicker({
-        types: [
-          {
-            description: "Backup Files",
-            accept: {
-              "application/json": [".json"],
-              "application/octet-stream": [".mimibk", ".db"],
-            },
-          },
-        ],
-        multiple: false,
-      });
-      const file = await fileHandle.getFile();
-      const buffer = await file.arrayBuffer();
-      setShowRestoreConfirm({buffer, name: file.name});
-      setShowSettingsPage(false);
-    } catch (error) {
-      if ((error as DOMException).name === "AbortError") {
-        console.log("File picker was cancelled by the user.");
-      } else {
-        console.error("File picker error:", error);
-        showToast("ファイルの読み込みに失敗しました。", 5000);
-      }
-    }
-  }, [showToast]);
-
-  const handleConvertFromFilePicker = useCallback(async () => {
-    if (!("showOpenFilePicker" in window)) {
-      showToast(
-        "お使いのブラウザはFile System Access APIをサポートしていません。",
-        5000
-      );
-      return;
-    }
-
-    setIsConverting(true);
-    showToast("ミミノートの変換を開始します...", 10000);
-
-    try {
-      const [fileHandle] = await window.showOpenFilePicker({
-        types: [
-          {
-            description: "Database Files",
-            accept: {
-              "application/octet-stream": [".mimibk", ".db"],
-              "application/x-sqlite3": [".sqlite", ".sqlite3"],
-            },
-          },
-        ],
-        multiple: false,
-      });
-      const file = await fileHandle.getFile();
-      const buffer = await file.arrayBuffer();
-      const notes = await parseMimiNoteBackup(buffer);
-
-      if (notes.length === 0) {
-        showToast("変換対象のメモが見つかりませんでした。", 3000);
-        return;
-      }
-
-      const jsonString = JSON.stringify(notes, null, 2);
-      const blob = new Blob([jsonString], {type: "application/json"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const originalFileName = file.name.replace(/\.[^/.]+$/, "");
-      a.download = `${originalFileName}_nanamemo.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast(
-        `${notes.length}件のメモを変換し、ダウンロードしました！`,
-        5000
-      );
-    } catch (error) {
-      if ((error as DOMException).name === "AbortError") {
-        console.log("File picker was cancelled by the user.");
-      } else {
-        console.error("ミミノートの変換に失敗しました:", error);
-        const message = error instanceof Error ? error.message : String(error);
-        showToast(`変換に失敗しました: ${message}`, 5000);
-      }
-    } finally {
-      setIsConverting(false);
-    }
-  }, [showToast]);
-
-  const proceedWithRestore = useCallback(
-    async (restoreData: {buffer: ArrayBuffer; name: string} | null) => {
-      setShowRestoreConfirm(null);
-      if (!restoreData || restoreData.buffer.byteLength === 0) {
-        if (restoreData) {
-          showToast(`復元に失敗しました: ファイルが空です。`, 5000);
-        }
-        return;
-      }
-
-      const {buffer, name} = restoreData;
-      showToast("バックアップファイルを解析中...", 10000);
-
-      try {
-        let importedNotes: Note[];
-        const fileName = name.toLowerCase();
-
-        if (fileName.endsWith(".json")) {
-          const text = new TextDecoder().decode(buffer);
-          const parsedData = JSON.parse(text);
-          if (
-            Array.isArray(parsedData) &&
-            parsedData.length > 0 &&
-            "content" in parsedData[0]
-          ) {
-            importedNotes = parsedData.map((n: Partial<Note>) => ({
-              id: n.id || String(Date.now()),
-              content: n.content || "",
-              createdAt: n.createdAt || Date.now(),
-              updatedAt: n.updatedAt || Date.now(),
-              isPinned: n.isPinned || false,
-              color: n.color || "text-slate-800 dark:text-slate-200",
-              font: n.font || "font-sans",
-              fontSize: n.fontSize || "text-lg",
-            }));
-          } else {
-            throw new Error("無効なJSONファイル形式です。");
-          }
-        } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
-          importedNotes = await parseMimiNoteBackup(buffer);
-        } else {
-          throw new Error("サポートされていないファイル形式です。");
-        }
-
-        setNotes((currentNotes) => {
-          const notesMap = new Map<string, Note>();
-          for (const note of currentNotes) {
-            notesMap.set(note.id, note);
-          }
-          for (const importedNote of importedNotes) {
-            const existingNote = notesMap.get(importedNote.id);
-            if (
-              !existingNote ||
-              importedNote.updatedAt >= existingNote.updatedAt
-            ) {
-              notesMap.set(importedNote.id, importedNote);
-            }
-          }
-          return Array.from(notesMap.values());
-        });
-
-        showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
-      } catch (error: unknown) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        showToast(`復元に失敗しました: ${errorMessage}`, 5000);
-        console.error("Failed to restore notes:", error);
-      }
-    },
-    [setNotes, showToast]
-  );
-
-  const cancelRestore = useCallback(() => {
-    setShowRestoreConfirm(null);
-  }, []);
-
   if (showSettingsPage) {
     return (
       <Settings
+        notes={notes}
+        setNotes={setNotes}
         onClose={() => setShowSettingsPage(false)}
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
-        onBackup={handleBackup}
-        onRestoreTrigger={handleRestoreFromFilePicker}
-        onConvertTrigger={handleConvertFromFilePicker}
-        isConverting={isConverting}
         installPrompt={installPrompt}
         showToast={showToast}
         sortBy={sortBy}
         setSortBy={setSortBy}
         isListLinkifyEnabled={isLinkifyEnabled}
+        // FIX: Pass the correct state setter 'setIsLinkifyEnabled' for the 'setIsListLinkifyEnabled' prop.
         setIsListLinkifyEnabled={setIsLinkifyEnabled}
         isEditorLinkifyEnabled={isEditorLinkifyEnabled}
         setIsEditorLinkifyEnabled={setIsEditorLinkifyEnabled}
@@ -1394,43 +1210,6 @@ export default function App() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteConfirmation(null)}
       />
-      {showRestoreConfirm && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={cancelRestore}
-        >
-          <div
-            className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center mb-4">
-              メモの復元
-            </h2>
-            <p className="text-slate-600 dark:text-slate-300 mb-6 text-center">
-              バックアップから復元しますか？
-              <br />
-              <strong className="text-rose-500 dark:text-rose-400">
-                既存のメモは保持され、バックアップのメモが追加されます。
-              </strong>
-              同じメモがある場合は、更新日時が新しい方で上書きされます。
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={cancelRestore}
-                className="px-4 py-2 rounded-md border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-slate-400"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => proceedWithRestore(showRestoreConfirm)}
-                className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-blue-500"
-              >
-                復元
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       <div
         className={`fixed top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full text-sm shadow-lg z-50 transition-opacity duration-300 ${
           toastMessage ? "opacity-100" : "opacity-0 pointer-events-none"
