@@ -790,6 +790,7 @@ export default function App() {
     buffer: ArrayBuffer;
     name: string;
   } | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [pinnedToNotificationIds, setPinnedToNotificationIds] = useState<
@@ -1168,6 +1169,69 @@ export default function App() {
     }
   }, [showToast]);
 
+  const handleConvertFromFilePicker = useCallback(async () => {
+    if (!("showOpenFilePicker" in window)) {
+      showToast(
+        "お使いのブラウザはFile System Access APIをサポートしていません。",
+        5000
+      );
+      return;
+    }
+
+    setIsConverting(true);
+    showToast("ミミノートの変換を開始します...", 10000);
+
+    try {
+      const [fileHandle] = await window.showOpenFilePicker({
+        types: [
+          {
+            description: "Database Files",
+            accept: {
+              "application/octet-stream": [".mimibk", ".db"],
+              "application/x-sqlite3": [".sqlite", ".sqlite3"],
+            },
+          },
+        ],
+        multiple: false,
+      });
+      const file = await fileHandle.getFile();
+      const buffer = await file.arrayBuffer();
+      const notes = await parseMimiNoteBackup(buffer);
+
+      if (notes.length === 0) {
+        showToast("変換対象のメモが見つかりませんでした。", 3000);
+        return;
+      }
+
+      const jsonString = JSON.stringify(notes, null, 2);
+      const blob = new Blob([jsonString], {type: "application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const originalFileName = file.name.replace(/\.[^/.]+$/, "");
+      a.download = `${originalFileName}_nanamemo.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(
+        `${notes.length}件のメモを変換し、ダウンロードしました！`,
+        5000
+      );
+    } catch (error) {
+      if ((error as DOMException).name === "AbortError") {
+        console.log("File picker was cancelled by the user.");
+      } else {
+        console.error("ミミノートの変換に失敗しました:", error);
+        const message = error instanceof Error ? error.message : String(error);
+        showToast(`変換に失敗しました: ${message}`, 5000);
+      }
+    } finally {
+      setIsConverting(false);
+    }
+  }, [showToast]);
+
   const proceedWithRestore = useCallback(
     async (restoreData: {buffer: ArrayBuffer; name: string} | null) => {
       setShowRestoreConfirm(null);
@@ -1252,6 +1316,8 @@ export default function App() {
         setIsDarkMode={setIsDarkMode}
         onBackup={handleBackup}
         onRestoreTrigger={handleRestoreFromFilePicker}
+        onConvertTrigger={handleConvertFromFilePicker}
+        isConverting={isConverting}
         installPrompt={installPrompt}
         showToast={showToast}
         sortBy={sortBy}

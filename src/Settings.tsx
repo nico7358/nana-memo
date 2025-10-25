@@ -1,5 +1,4 @@
-import React, {useCallback, useState} from "react";
-import {parseMimiNoteBackup} from "@/App.tsx";
+import React, {useCallback} from "react";
 
 // --- 型定義 ---
 interface BeforeInstallPromptEvent extends Event {
@@ -171,6 +170,8 @@ type SettingsProps = {
   setIsDarkMode: (isDark: boolean) => void;
   onBackup: () => void;
   onRestoreTrigger: () => void;
+  onConvertTrigger: () => void;
+  isConverting: boolean;
   installPrompt: BeforeInstallPromptEvent | null;
   showToast: (message: string, duration?: number) => void;
   sortBy: string;
@@ -187,6 +188,8 @@ export default function Settings({
   setIsDarkMode,
   onBackup,
   onRestoreTrigger,
+  onConvertTrigger,
+  isConverting,
   installPrompt,
   showToast,
   sortBy,
@@ -196,92 +199,15 @@ export default function Settings({
   isEditorLinkifyEnabled,
   setIsEditorLinkifyEnabled,
 }: SettingsProps) {
-  const [isConverting, setIsConverting] = useState(false);
-
   const handleInstallClick = useCallback(() => {
     if (!installPrompt) return;
     installPrompt.prompt();
-  }, [installPrompt]);
-
-  // File System Access APIでファイルを選択するための共通オプション
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const filePickerOptions: OpenFilePickerOptions = {
-    types: [
-      {
-        description: "Database Files",
-        accept: {
-          "application/octet-stream": [".mimibk", ".db"],
-          "application/x-sqlite3": [".sqlite", ".sqlite3"],
-        },
-      },
-    ],
-    multiple: false,
-  };
-
-  // Fileオブジェクトを受け取って変換するコアロジック
-  const convertMimibkFile = useCallback(
-    async (file: File) => {
-      setIsConverting(true);
-      showToast("ミミノートの変換を開始します...", 10000);
-
-      try {
-        const buffer = await file.arrayBuffer();
-        const notes = await parseMimiNoteBackup(buffer);
-
-        if (notes.length === 0) {
-          showToast("変換対象のメモが見つかりませんでした。", 3000);
-          return;
-        }
-
-        const jsonString = JSON.stringify(notes, null, 2);
-        const blob = new Blob([jsonString], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        const originalFileName = file.name.replace(/\.[^/.]+$/, "");
-        a.download = `${originalFileName}_nanamemo.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        showToast(
-          `${notes.length}件のメモを変換し、ダウンロードしました！`,
-          5000
-        );
-      } catch (error) {
-        console.error("ミミノートの変換に失敗しました:", error);
-        const message = error instanceof Error ? error.message : String(error);
-        showToast(`変換に失敗しました: ${message}`, 5000);
-      } finally {
-        setIsConverting(false);
+    installPrompt.userChoice.then(({outcome}) => {
+      if (outcome === "accepted") {
+        showToast("アプリをインストールしました！", 3000);
       }
-    },
-    [showToast]
-  );
-
-  // ミミノート変換ボタンのクリックハンドラ
-  const handleConvertPickerClick = useCallback(async () => {
-    if (!("showOpenFilePicker" in window)) {
-      showToast(
-        "お使いのブラウザはFile System Access APIをサポートしていません。",
-        5000
-      );
-      return;
-    }
-    try {
-      const [fileHandle] = await window.showOpenFilePicker(filePickerOptions);
-      const file = await fileHandle.getFile();
-      await convertMimibkFile(file);
-    } catch (error) {
-      if ((error as DOMException).name === "AbortError") {
-        console.log("File picker was cancelled by the user.");
-      } else {
-        console.error("File System Access API error:", error);
-        showToast("ファイルを開けませんでした。", 5000);
-      }
-    }
-  }, [convertMimibkFile, showToast, filePickerOptions]);
+    });
+  }, [installPrompt, showToast]);
 
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
@@ -362,7 +288,7 @@ export default function Settings({
                 </div>
               </button>
               <button
-                onClick={handleConvertPickerClick}
+                onClick={onConvertTrigger}
                 disabled={isConverting}
                 className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-yellow-600 dark:text-yellow-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-yellow-300 dark:hover:border-yellow-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
