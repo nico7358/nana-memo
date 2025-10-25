@@ -1,20 +1,6 @@
-import React, {useCallback, useState, useRef} from "react";
-import {parseMimiNoteBackup} from "@/App.tsx"; // Import the unified parser
+import React, {useCallback, useState} from "react";
+import {parseMimiNoteBackup} from "@/App.tsx";
 import pako from "pako";
-
-/* ---------- Android向け安定版ファイル読み込み関数 ---------- */
-async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
-      else reject(new Error("ファイルの読み込みに失敗しました"));
-    };
-    reader.onerror = () => reject(reader.error);
-    // Androidではイベント遅延を挟むことで安定
-    setTimeout(() => reader.readAsArrayBuffer(file), 100);
-  });
-}
 
 // --- 型定義 ---
 interface BeforeInstallPromptEvent extends Event {
@@ -24,6 +10,26 @@ interface BeforeInstallPromptEvent extends Event {
     platform: string;
   }>;
   prompt(): Promise<void>;
+}
+
+// File System Access APIの型が標準ライブラリに含まれていない場合があるため、グローバルで定義します。
+declare global {
+  interface Window {
+    showOpenFilePicker(
+      options?: OpenFilePickerOptions
+    ): Promise<FileSystemFileHandle[]>;
+  }
+  interface OpenFilePickerOptions {
+    multiple?: boolean;
+    excludeAcceptAllOption?: boolean;
+    types?: {
+      description?: string;
+      accept: Record<string, string | string[]>;
+    }[];
+  }
+  interface FileSystemFileHandle {
+    getFile(): Promise<File>;
+  }
 }
 
 // --- アイコンコンポーネント ---
@@ -139,8 +145,6 @@ const CloseIcon = React.memo<{className?: string}>(({className}) => (
 ));
 
 // --- UI部品 ---
-
-// 設定セクションのカード
 const SettingsCard = ({
   title,
   icon,
@@ -213,40 +217,45 @@ export default function Settings({
   isEditorLinkifyEnabled,
   setIsEditorLinkifyEnabled,
 }: SettingsProps) {
-  const [isConverting, setIsConverting] = useState(false); // ミミノート変換中の状態管理
-  const mimibkInputRef = useRef<HTMLInputElement>(null); // 変換用ファイル入力の参照
-
+  const [isConverting, setIsConverting] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const analysisInputRef = useRef<HTMLInputElement>(null);
 
   const handleInstallClick = useCallback(() => {
     if (!installPrompt) return;
     installPrompt.prompt();
   }, [installPrompt]);
 
-  const handleAnalysis = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) {
-        return;
-      }
+  // File System Access APIでファイルを選択するための共通オプション
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const filePickerOptions: OpenFilePickerOptions = {
+    types: [
+      {
+        description: "Database Files",
+        accept: {
+          "application/octet-stream": [".mimibk", ".db"],
+          "application/x-sqlite3": [".sqlite", ".sqlite3"],
+        },
+      },
+    ],
+    multiple: false,
+  };
 
+  // Fileオブジェクトを受け取って解析するコアロジック
+  const analyzeDatabaseFile = useCallback(
+    async (file: File) => {
       setIsAnalyzing(true);
       setAnalysisResult(null);
       showToast("ファイルを解析中...", 5000);
 
       try {
-        const buffer = await readFileAsArrayBuffer(file);
+        const buffer = await file.arrayBuffer();
         if (!buffer || buffer.byteLength === 0) {
-          throw new Error(
-            "ファイルが空です。PWA版ではなくブラウザでお試しください。"
-          );
+          throw new Error("ファイルが空か、読み込めませんでした。");
         }
 
         let bytes = new Uint8Array(buffer);
 
-        // Decompress if it's zlib compressed (like in parseMimiNoteBackup)
         if (bytes.length > 2 && bytes[0] === 0x78) {
           try {
             bytes = pako.inflate(bytes);
@@ -258,29 +267,27 @@ export default function Settings({
           }
         }
 
-        // Dynamically import sql.js
         const initSqlJs = (await import("sql.js")).default;
         const SQL = await initSqlJs({
           locateFile: (file) => `/${file}`,
         });
 
-        // Load the database
         const db = new SQL.Database(bytes);
-
-        // Execute the query to get table names
-        const result = db.exec(
-          "SELECT name FROM sqlite_master WHERE type='table';"
-        );
-
-        // Close the database to free memory
-        db.close();
-
-        if (result.length === 0) {
-          setAnalysisResult("データベースにテーブルが見つかりませんでした。");
-        } else {
-          // Format the result as a pretty-printed JSON string
-          setAnalysisResult(JSON.stringify(result, null, 2));
+        try {
+          const result = db.exec(
+            "SELECT name FROM sqlite_master WHERE type='table';"
+          );
+          if (result.length === 0 || result[0].values.length === 0) {
+            setAnalysisResult("データベースにテーブルが見つかりませんでした。");
+          } else {
+            // テーブル名のみを抽出し、見やすいJSON形式に整形
+            const tableNames = result[0].values.map((row) => row[0]);
+            setAnalysisResult(JSON.stringify({tables: tableNames}, null, 2));
+          }
+        } finally {
+          db.close();
         }
+
         showToast("解析が完了しました。", 3000);
       } catch (error) {
         console.error("DB解析エラー:", error);
@@ -289,38 +296,43 @@ export default function Settings({
         showToast(`解析に失敗しました。`, 5000);
       } finally {
         setIsAnalyzing(false);
-        // Reset file input so the same file can be selected again
-        if (analysisInputRef.current) {
-          analysisInputRef.current.value = "";
-        }
       }
     },
     [showToast]
   );
 
-  /**
-   * ミミノート(.mimibk)ファイルをnanamemo形式のJSONに変換し、ダウンロードする
-   */
-  const handleMimibkConvert = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) {
-        if (mimibkInputRef.current) {
-          mimibkInputRef.current.value = "";
-        }
-        return;
-      }
+  // DBインスペクターボタンのクリックハンドラ
+  const handleAnalysisPickerClick = useCallback(async () => {
+    if (!("showOpenFilePicker" in window)) {
+      showToast(
+        "お使いのブラウザはFile System Access APIをサポートしていません。",
+        5000
+      );
+      return;
+    }
 
+    try {
+      const [fileHandle] = await window.showOpenFilePicker(filePickerOptions);
+      const file = await fileHandle.getFile();
+      await analyzeDatabaseFile(file);
+    } catch (error) {
+      if ((error as DOMException).name === "AbortError") {
+        console.log("File picker was cancelled by the user.");
+      } else {
+        console.error("File System Access API error:", error);
+        showToast("ファイルを開けませんでした。", 5000);
+      }
+    }
+  }, [analyzeDatabaseFile, showToast, filePickerOptions]);
+
+  // Fileオブジェクトを受け取って変換するコアロジック
+  const convertMimibkFile = useCallback(
+    async (file: File) => {
       setIsConverting(true);
       showToast("ミミノートの変換を開始します...", 10000);
 
       try {
-        const buffer = await readFileAsArrayBuffer(file);
-        if (!buffer || buffer.byteLength === 0) {
-          throw new Error(
-            "ファイルが空です。PWAでは動作しない場合があります。ブラウザで試してください。"
-          );
-        }
+        const buffer = await file.arrayBuffer();
         const notes = await parseMimiNoteBackup(buffer);
 
         if (notes.length === 0) {
@@ -349,14 +361,34 @@ export default function Settings({
         const message = error instanceof Error ? error.message : String(error);
         showToast(`変換に失敗しました: ${message}`, 5000);
       } finally {
-        if (mimibkInputRef.current) {
-          mimibkInputRef.current.value = "";
-        }
         setIsConverting(false);
       }
     },
     [showToast]
   );
+
+  // ミミノート変換ボタンのクリックハンドラ
+  const handleConvertPickerClick = useCallback(async () => {
+    if (!("showOpenFilePicker" in window)) {
+      showToast(
+        "お使いのブラウザはFile System Access APIをサポートしていません。",
+        5000
+      );
+      return;
+    }
+    try {
+      const [fileHandle] = await window.showOpenFilePicker(filePickerOptions);
+      const file = await fileHandle.getFile();
+      await convertMimibkFile(file);
+    } catch (error) {
+      if ((error as DOMException).name === "AbortError") {
+        console.log("File picker was cancelled by the user.");
+      } else {
+        console.error("File System Access API error:", error);
+        showToast("ファイルを開けませんでした。", 5000);
+      }
+    }
+  }, [convertMimibkFile, showToast, filePickerOptions]);
 
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
@@ -432,37 +464,32 @@ export default function Settings({
                 <div>
                   <span className="font-bold">バックアップから復元</span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400">
-                    nanamemo形式 (.json)
+                    nanamemo (.json) / ミミノート (.mimibk)
                   </span>
                 </div>
               </button>
               <button
-                onClick={() => !isConverting && mimibkInputRef.current?.click()}
+                onClick={handleConvertPickerClick}
                 disabled={isConverting}
                 className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-yellow-600 dark:text-yellow-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-yellow-300 dark:hover:border-yellow-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ConvertIcon className="w-6 h-6 mr-3 flex-shrink-0" />
                 <div>
                   <span className="font-bold">
-                    {isConverting ? "変換中..." : "ミミノートを変換"}
+                    {isConverting
+                      ? "変換中..."
+                      : "ミミノートをnanamemo形式に変換"}
                   </span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400">
-                    ミミノート形式 (.mimibk, .db)
+                    .mimibk, .db → .json ファイルを生成
                   </span>
                 </div>
               </button>
-              <input
-                type="file"
-                ref={mimibkInputRef}
-                onChange={handleMimibkConvert}
-                className="hidden"
-                accept=".mimibk,.db,application/octet-stream,application/x-sqlite3"
-              />
             </div>
             <div className="flex items-start p-3 mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
               <InfoIcon className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
               <p>
-                「ミミノートを変換」は、nanamemo形式の.jsonファイルを生成してダウンロードします。直接復元したい場合は、「バックアップから復元」ボタンから.mimibkファイルを選択してください。
+                「バックアップから復元」は直接メモを取り込みます。「ミミノートを変換」はnanamemo形式の.jsonファイルを生成して保存します。
               </p>
             </div>
           </div>
@@ -477,24 +504,16 @@ export default function Settings({
               DBインスペクター
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 mb-3">
-              `.mimibk` または SQLite
-              データベースファイルを選択して、テーブル構造を解析します。
+              `.mimibk` や `.db` ファイルを選択して、テーブル構造を解析します。
             </p>
             <button
-              onClick={() => !isAnalyzing && analysisInputRef.current?.click()}
+              onClick={handleAnalysisPickerClick}
               disabled={isAnalyzing}
               className="w-full flex items-center justify-center h-14 px-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <UploadIcon className="w-5 h-5 mr-2" />
               {isAnalyzing ? "解析中..." : "ファイルを選択して解析"}
             </button>
-            <input
-              type="file"
-              ref={analysisInputRef}
-              onChange={handleAnalysis}
-              className="hidden"
-              accept=".mimibk,.db,application/octet-stream,application/x-sqlite3"
-            />
           </div>
           {analysisResult && (
             <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
@@ -509,7 +528,7 @@ export default function Settings({
                   <CloseIcon className="w-5 h-5 text-slate-500" />
                 </button>
               </div>
-              <pre className="text-sm bg-white dark:bg-slate-800 p-3 rounded-md overflow-x-auto max-h-64">
+              <pre className="text-sm bg-white dark:bg-slate-800 p-3 rounded-md overflow-x-auto max-h-64 whitespace-pre-wrap break-all">
                 <code>{analysisResult}</code>
               </pre>
             </div>
