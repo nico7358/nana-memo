@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from "react";
+import React, {useState, useEffect, useRef} from "react";
 import {type Note, parseMimiNoteBackup} from "@/App.tsx";
 
 // --- 型定義 ---
@@ -31,107 +31,30 @@ declare global {
   }
 }
 
-// --- ファイル選択ヘルパー ---
-// showOpenFilePickerを優先し、非対応ブラウザでは<input type="file">にフォールバックします。
-// これにより、Androidなどのモバイル環境での互換性が向上します。
-async function openFile(options: OpenFilePickerOptions): Promise<File> {
-  if ("showOpenFilePicker" in window) {
-    try {
-      const [fileHandle] = await window.showOpenFilePicker(options);
-      return fileHandle.getFile();
-    } catch (err) {
-      if ((err as DOMException).name !== "AbortError") {
-        console.warn("showOpenFilePicker failed, falling back to input.", err);
-        // AbortError以外で失敗した場合はフォールバックに移行
-      } else {
-        // ユーザーがピッカーをキャンセルした場合はエラーをそのまま投げる
-        console.log("File picker dialog closed.");
-        throw err;
-      }
-    }
-  }
-
-  // フォールバック: <input type="file"> を使用
-  console.log('Using <input type="file"> fallback.');
-  return new Promise((resolve, reject) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    if (options.types) {
-      input.accept = options.types
-        .flatMap((type) => Object.values(type.accept).flat())
-        .join(",");
-    }
-    input.style.display = "none";
-
-    let isDone = false;
-    const cleanupAndFinish = (result: File | Error) => {
-      if (isDone) return;
-      isDone = true;
-
-      // input要素がDOMに存在する場合のみ削除
-      if (input.parentNode) {
-        input.parentNode.removeChild(input);
-      }
-      window.removeEventListener("focus", onFocus);
-
-      if (result instanceof File) {
-        resolve(result);
-      } else {
-        reject(result);
-      }
-    };
-
-    const onFocus = () => {
-      setTimeout(() => {
-        // onchangeが先に処理されていなければ、キャンセルとみなす
-        if (!isDone) {
-          cleanupAndFinish(
-            new DOMException(
-              "File picker was cancelled by the user.",
-              "AbortError"
-            )
-          );
-        }
-      }, 500);
-    };
-
-    input.onchange = () => {
-      if (input.files && input.files.length > 0) {
-        cleanupAndFinish(input.files[0]);
-      } else {
-        cleanupAndFinish(new DOMException("No file selected.", "AbortError"));
-      }
-    };
-
-    input.oncancel = () => {
-      cleanupAndFinish(
-        new DOMException("File picker was cancelled by the user.", "AbortError")
-      );
-    };
-
-    document.body.appendChild(input);
-    window.addEventListener("focus", onFocus, {once: true});
-    input.click();
-  });
-}
-
 // --- ファイル読み込みヘルパー (FileReaderを使用) ---
-// Android等の一部環境でreadAsArrayBufferが空のデータを返す問題への対策として、
+// Android等の一部環境でファイルが空になる問題への対策として、
 // より堅牢なreadAsDataURLを使用し、Base64からArrayBufferに変換します。
 function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
+    if (!file) {
+      return reject(new Error("ファイルが指定されていません。"));
+    }
     const reader = new FileReader();
     reader.onload = () => {
-      const result = reader.result as string; // result will be a data URL string
+      const result = reader.result as string;
       try {
-        // データURLからBase64部分を抽出: "data:[<mediatype>][;base64],<data>"
         const base64String = result.substring(result.indexOf(",") + 1);
-        // Base64をデコード
+        if (!base64String) {
+          throw new Error("ファイルが空か、読み込みに失敗しました。");
+        }
         const binaryString = atob(base64String);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
         for (let i = 0; i < len; i++) {
           bytes[i] = binaryString.charCodeAt(i);
+        }
+        if (bytes.buffer.byteLength === 0) {
+          throw new Error("ファイルが空か、読み込みに失敗しました。");
         }
         resolve(bytes.buffer);
       } catch (e) {
@@ -141,9 +64,8 @@ function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
     };
     reader.onerror = (e) => {
       console.error("FileReader error", e);
-      reject(reader.error);
+      reject(new Error("ファイルリーダーでエラーが発生しました。"));
     };
-    // 不明な拡張子のファイルに対して、Androidでより安定して動作するreadAsDataURLを使用します。
     reader.readAsDataURL(file);
   });
 }
@@ -320,6 +242,90 @@ export default function Settings({
   } | null>(null);
   const [, setShowBackupBadge] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const filePromiseRef = useRef<{
+    resolve: (file: File) => void;
+    reject: (reason?: unknown) => void;
+  } | null>(null);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (filePromiseRef.current) {
+      if (event.target.files && event.target.files.length > 0) {
+        filePromiseRef.current.resolve(event.target.files[0]);
+      } else {
+        filePromiseRef.current.reject(
+          new DOMException("No file selected.", "AbortError")
+        );
+      }
+      filePromiseRef.current = null;
+    }
+    // Always reset the input value to allow re-selecting the same file
+    if (event.target) {
+      event.target.value = "";
+    }
+  };
+
+  const triggerFilePicker = (accept: string): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      if (filePromiseRef.current) {
+        filePromiseRef.current.reject(
+          new DOMException("A new file picker was opened.", "AbortError")
+        );
+      }
+      filePromiseRef.current = {resolve, reject};
+
+      const fileInput = fileInputRef.current;
+      if (fileInput) {
+        fileInput.accept = accept;
+
+        const onFocus = () => {
+          window.removeEventListener("focus", onFocus);
+          setTimeout(() => {
+            if (filePromiseRef.current) {
+              filePromiseRef.current.reject(
+                new DOMException(
+                  "File picker was cancelled by the user.",
+                  "AbortError"
+                )
+              );
+              filePromiseRef.current = null;
+            }
+          }, 300);
+        };
+
+        window.addEventListener("focus", onFocus);
+        fileInput.click();
+      } else {
+        reject(new Error("File input element not found."));
+      }
+    });
+  };
+
+  const openFileWithFallback = async (
+    options: OpenFilePickerOptions
+  ): Promise<File> => {
+    if ("showOpenFilePicker" in window) {
+      try {
+        const [fileHandle] = await window.showOpenFilePicker(options);
+        return await fileHandle.getFile();
+      } catch (err) {
+        if ((err as DOMException).name === "AbortError") {
+          console.log("showOpenFilePicker was cancelled by the user.");
+          throw err;
+        }
+        console.warn("showOpenFilePicker failed, falling back to input.", err);
+      }
+    }
+
+    console.log('Using static <input type="file"> fallback.');
+    const accept =
+      options.types
+        ?.flatMap((type) => Object.values(type.accept).flat())
+        .join(",") ?? "";
+
+    return triggerFilePicker(accept);
+  };
+
   useEffect(() => {
     const lastBackupTime = parseInt(
       localStorage.getItem("nana-memo-last-backup-timestamp") || "0",
@@ -367,30 +373,31 @@ export default function Settings({
 
   const handleRestore = async () => {
     try {
-      const file = await openFile({
+      const file = await openFileWithFallback({
         types: [
           {
             description: "Backup Files",
             accept: {
-              "application/json": [".json"],
-              "application/octet-stream": [".mimibk", ".db"],
+              ".json": ".json",
+              ".mimibk": ".mimibk",
+              ".db": ".db",
             },
           },
         ],
         multiple: false,
       });
       const buffer = await readFileAsArrayBuffer(file);
-      if (buffer.byteLength === 0) {
-        showToast("ファイルが空か、読み込みに失敗しました。", 5000);
-        return;
-      }
       setShowRestoreConfirm({buffer, name: file.name});
     } catch (error) {
       if ((error as DOMException).name === "AbortError") {
         console.log("File picker was cancelled by the user.");
       } else {
         console.error("File picker error:", error);
-        showToast("ファイルの読み込みに失敗しました。", 5000);
+        const message =
+          error instanceof Error
+            ? error.message
+            : "ファイルの読み込みに失敗しました。";
+        showToast(message, 5000);
       }
     }
   };
@@ -400,24 +407,21 @@ export default function Settings({
     showToast("ミミノートの変換を開始します...", 3000);
 
     try {
-      const file = await openFile({
+      const file = await openFileWithFallback({
         types: [
           {
             description: "Database Files",
             accept: {
-              "application/octet-stream": [".mimibk", ".db"],
-              "application/x-sqlite3": [".sqlite", ".sqlite3"],
+              ".mimibk": ".mimibk",
+              ".db": ".db",
+              ".sqlite": ".sqlite",
+              ".sqlite3": ".sqlite3",
             },
           },
         ],
         multiple: false,
       });
       const buffer = await readFileAsArrayBuffer(file);
-
-      if (buffer.byteLength === 0) {
-        throw new Error("ファイルが空か、読み込みに失敗しました。");
-      }
-
       const notes = await parseMimiNoteBackup(buffer);
 
       if (notes.length === 0) {
@@ -447,7 +451,7 @@ export default function Settings({
       } else {
         console.error("ミミノートの変換に失敗しました:", error);
         const message = error instanceof Error ? error.message : String(error);
-        showToast(`変換に失敗しました: ${message}`, 5000);
+        showToast(`ミミノートの変換に失敗しました: ${message}`, 5000);
       }
     } finally {
       setIsConverting(false);
@@ -529,6 +533,13 @@ export default function Settings({
 
   return (
     <>
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={handleFileChange}
+        aria-hidden="true"
+      />
       <div className="flex flex-col h-screen max-w-md mx-auto bg-amber-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans transition-colors duration-300">
         <header className="flex-shrink-0 flex items-center justify-between p-2 border-b border-amber-200 dark:border-slate-700">
           <button
