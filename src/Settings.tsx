@@ -116,17 +116,35 @@ async function openFile(options: OpenFilePickerOptions): Promise<File> {
 }
 
 // --- ファイル読み込みヘルパー (FileReaderを使用) ---
-// file.arrayBuffer() が不安定なモバイル環境向けの互換性対策
+// Android等の一部環境でreadAsArrayBufferが空のデータを返す問題への対策として、
+// より堅牢なreadAsDataURLを使用し、Base64からArrayBufferに変換します。
 function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      resolve(reader.result as ArrayBuffer);
+      const result = reader.result as string; // result will be a data URL string
+      try {
+        // データURLからBase64部分を抽出: "data:[<mediatype>][;base64],<data>"
+        const base64String = result.substring(result.indexOf(",") + 1);
+        // Base64をデコード
+        const binaryString = atob(base64String);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        resolve(bytes.buffer);
+      } catch (e) {
+        console.error("Failed to process data URL", e);
+        reject(new Error("データURLからのファイル読み込みに失敗しました。"));
+      }
     };
-    reader.onerror = () => {
+    reader.onerror = (e) => {
+      console.error("FileReader error", e);
       reject(reader.error);
     };
-    reader.readAsArrayBuffer(file);
+    // 不明な拡張子のファイルに対して、Androidでより安定して動作するreadAsDataURLを使用します。
+    reader.readAsDataURL(file);
   });
 }
 
