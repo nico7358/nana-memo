@@ -45,6 +45,7 @@ async function openFile(options: OpenFilePickerOptions): Promise<File> {
         // AbortError以外で失敗した場合はフォールバックに移行
       } else {
         // ユーザーがピッカーをキャンセルした場合はエラーをそのまま投げる
+        console.log("File picker dialog closed.");
         throw err;
       }
     }
@@ -62,39 +63,53 @@ async function openFile(options: OpenFilePickerOptions): Promise<File> {
     }
     input.style.display = "none";
 
-    const cleanup = () => {
-      document.body.removeChild(input);
+    let isDone = false;
+    const cleanupAndFinish = (result: File | Error) => {
+      if (isDone) return;
+      isDone = true;
+
+      // input要素がDOMに存在する場合のみ削除
+      if (input.parentNode) {
+        input.parentNode.removeChild(input);
+      }
       window.removeEventListener("focus", onFocus);
+
+      if (result instanceof File) {
+        resolve(result);
+      } else {
+        reject(result);
+      }
     };
 
-    // モバイルブラウザでのキャンセルを検知するためのトリック
     const onFocus = () => {
       setTimeout(() => {
-        // ファイルが選択されていない場合、キャンセルとみなす
-        if (!input.files || input.files.length === 0) {
-          cleanup();
-          reject(new DOMException("The user aborted a request.", "AbortError"));
+        // onchangeが先に処理されていなければ、キャンセルとみなす
+        if (!isDone) {
+          cleanupAndFinish(
+            new DOMException(
+              "File picker was cancelled by the user.",
+              "AbortError"
+            )
+          );
         }
       }, 500);
     };
 
-    input.onchange = (event) => {
-      cleanup();
-      const target = event.target as HTMLInputElement;
-      if (target.files && target.files.length > 0) {
-        resolve(target.files[0]);
+    input.onchange = () => {
+      if (input.files && input.files.length > 0) {
+        cleanupAndFinish(input.files[0]);
       } else {
-        reject(new DOMException("No file selected.", "AbortError"));
+        cleanupAndFinish(new DOMException("No file selected.", "AbortError"));
       }
     };
 
     input.oncancel = () => {
-      cleanup();
-      reject(new DOMException("The user aborted a request.", "AbortError"));
+      cleanupAndFinish(
+        new DOMException("File picker was cancelled by the user.", "AbortError")
+      );
     };
 
     document.body.appendChild(input);
-    // 'focus'イベントは一度だけリッスンする
     window.addEventListener("focus", onFocus, {once: true});
     input.click();
   });
