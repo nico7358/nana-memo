@@ -70,6 +70,15 @@ interface SpeechRecognition {
   stop: () => void;
 }
 
+// --- File Handling API Types ---
+interface LaunchParams {
+  readonly files: ReadonlyArray<FileSystemFileHandle>;
+}
+
+interface LaunchQueue {
+  setConsumer(consumer: (launchParams: LaunchParams) => void): void;
+}
+
 // FIX: Correctly type `SpeechRecognition` and `webkitSpeechRecognition` on the `Window`
 // interface as constructors. The `SpeechRecognition` interface describes an *instance*, but
 // `window.SpeechRecognition` is the *constructor* for it. The original `typeof SpeechRecognition`
@@ -78,6 +87,7 @@ declare global {
   interface Window {
     SpeechRecognition: new () => SpeechRecognition;
     webkitSpeechRecognition: new () => SpeechRecognition;
+    launchQueue?: LaunchQueue;
   }
 }
 
@@ -828,6 +838,37 @@ export default function App() {
     }
   }, []);
 
+  const showToast = useCallback((message: string, duration: number = 3000) => {
+    setToastMessage(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMessage(""), duration);
+  }, []);
+
+  // File Handling API: アプリがファイルから起動された際の処理
+  useEffect(() => {
+    if ("launchQueue" in window && window.launchQueue) {
+      window.launchQueue.setConsumer(async (launchParams) => {
+        // ファイルがなければ何もしない
+        if (!launchParams.files || launchParams.files.length === 0) {
+          return;
+        }
+
+        try {
+          // 最初のファイルハンドルを取得
+          const fileHandle = launchParams.files[0];
+          const file = await fileHandle.getFile();
+          const buffer = await file.arrayBuffer();
+
+          // 復元確認モーダルを表示
+          setShowRestoreConfirm({buffer, name: file.name});
+        } catch (e) {
+          console.error("File Handling API error:", e);
+          showToast("ファイルの処理中にエラーが発生しました。", 5000);
+        }
+      });
+    }
+  }, [showToast]);
+
   useEffect(() => {
     const lastBackupTime = parseInt(
       localStorage.getItem("nana-memo-last-backup-timestamp") || "0",
@@ -926,12 +967,6 @@ export default function App() {
       navigator.serviceWorker.removeEventListener("message", handleSWMessage);
     };
   }, [notes]);
-
-  const showToast = useCallback((message: string, duration: number = 3000) => {
-    setToastMessage(message);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToastMessage(""), duration);
-  }, []);
 
   const handleVoiceInput = useCallback(() => {
     const SpeechRecognition =

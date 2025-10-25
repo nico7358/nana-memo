@@ -18,5 +18,15 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "application/octet-stream": [".mimibk", ".db"],
+        "application/vnd.sqlite3": [".sqlite", ".sqlite3"]
+      },
+      "launch_type": "single-client"
+    }
   ]
 }
