@@ -49,14 +49,16 @@ function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
         }
         const binaryString = atob(base64String);
         const len = binaryString.length;
-        const bytes = new Uint8Array(len);
+        // FIX: Explicitly create an ArrayBuffer to resolve the ArrayBufferLike type error.
+        const buffer = new ArrayBuffer(len);
+        const bytes = new Uint8Array(buffer);
         for (let i = 0; i < len; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
-        if (bytes.buffer.byteLength === 0) {
+        if (buffer.byteLength === 0) {
           throw new Error("ファイルが空か、読み込みに失敗しました。");
         }
-        resolve(bytes.buffer);
+        resolve(buffer);
       } catch (e) {
         console.error("Failed to process data URL", e);
         reject(new Error("データURLからのファイル読み込みに失敗しました。"));
