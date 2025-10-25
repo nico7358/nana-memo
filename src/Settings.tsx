@@ -31,6 +31,75 @@ declare global {
   }
 }
 
+// --- ファイル選択ヘルパー ---
+// showOpenFilePickerを優先し、非対応ブラウザでは<input type="file">にフォールバックします。
+// これにより、Androidなどのモバイル環境での互換性が向上します。
+async function openFile(options: OpenFilePickerOptions): Promise<File> {
+  if ("showOpenFilePicker" in window) {
+    try {
+      const [fileHandle] = await window.showOpenFilePicker(options);
+      return fileHandle.getFile();
+    } catch (err) {
+      if ((err as DOMException).name !== "AbortError") {
+        console.warn("showOpenFilePicker failed, falling back to input.", err);
+        // AbortError以外で失敗した場合はフォールバックに移行
+      } else {
+        // ユーザーがピッカーをキャンセルした場合はエラーをそのまま投げる
+        throw err;
+      }
+    }
+  }
+
+  // フォールバック: <input type="file"> を使用
+  console.log('Using <input type="file"> fallback.');
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    if (options.types) {
+      input.accept = options.types
+        .flatMap((type) => Object.values(type.accept).flat())
+        .join(",");
+    }
+    input.style.display = "none";
+
+    const cleanup = () => {
+      document.body.removeChild(input);
+      window.removeEventListener("focus", onFocus);
+    };
+
+    // モバイルブラウザでのキャンセルを検知するためのトリック
+    const onFocus = () => {
+      setTimeout(() => {
+        // ファイルが選択されていない場合、キャンセルとみなす
+        if (!input.files || input.files.length === 0) {
+          cleanup();
+          reject(new DOMException("The user aborted a request.", "AbortError"));
+        }
+      }, 500);
+    };
+
+    input.onchange = (event) => {
+      cleanup();
+      const target = event.target as HTMLInputElement;
+      if (target.files && target.files.length > 0) {
+        resolve(target.files[0]);
+      } else {
+        reject(new DOMException("No file selected.", "AbortError"));
+      }
+    };
+
+    input.oncancel = () => {
+      cleanup();
+      reject(new DOMException("The user aborted a request.", "AbortError"));
+    };
+
+    document.body.appendChild(input);
+    // 'focus'イベントは一度だけリッスンする
+    window.addEventListener("focus", onFocus, {once: true});
+    input.click();
+  });
+}
+
 // --- アイコンコンポーネント ---
 const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
   <svg
@@ -248,17 +317,9 @@ export default function Settings({
     showToast("バックアップファイルを保存しました。");
   };
 
-  // NOTE: These handlers are defined without useCallback to ensure a new function is created on each render.
-  // This can help avoid issues with stale closures and ensures the browser's security model
-  // for `showOpenFilePicker` (which requires a direct user interaction) is always satisfied.
   const handleRestore = async () => {
-    if (!("showOpenFilePicker" in window)) {
-      showToast("お使いのブラウザは対応していません。", 5000);
-      return;
-    }
-
     try {
-      const [fileHandle] = await window.showOpenFilePicker({
+      const file = await openFile({
         types: [
           {
             description: "Backup Files",
@@ -270,7 +331,6 @@ export default function Settings({
         ],
         multiple: false,
       });
-      const file = await fileHandle.getFile();
       const buffer = await file.arrayBuffer();
       if (buffer.byteLength === 0) {
         showToast("ファイルが空です。", 5000);
@@ -288,16 +348,11 @@ export default function Settings({
   };
 
   const handleConvert = async () => {
-    if (!("showOpenFilePicker" in window)) {
-      showToast("お使いのブラウザは対応していません。", 5000);
-      return;
-    }
-
     setIsConverting(true);
     showToast("ミミノートの変換を開始します...", 3000);
 
     try {
-      const [fileHandle] = await window.showOpenFilePicker({
+      const file = await openFile({
         types: [
           {
             description: "Database Files",
@@ -309,7 +364,6 @@ export default function Settings({
         ],
         multiple: false,
       });
-      const file = await fileHandle.getFile();
       const buffer = await file.arrayBuffer();
 
       if (buffer.byteLength === 0) {
