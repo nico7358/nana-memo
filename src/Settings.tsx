@@ -380,9 +380,8 @@ export default function Settings({
           {
             description: "Backup Files",
             accept: {
-              ".json": ".json",
-              ".mimibk": ".mimibk",
-              ".db": ".db",
+              "application/json": [".json"],
+              "application/octet-stream": [".mimibk", ".db"],
             },
           },
         ],
@@ -414,10 +413,12 @@ export default function Settings({
           {
             description: "Database Files",
             accept: {
-              ".mimibk": ".mimibk",
-              ".db": ".db",
-              ".sqlite": ".sqlite",
-              ".sqlite3": ".sqlite3",
+              "application/octet-stream": [
+                ".mimibk",
+                ".db",
+                ".sqlite",
+                ".sqlite3",
+              ],
             },
           },
         ],
