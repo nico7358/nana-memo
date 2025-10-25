@@ -248,12 +248,12 @@ export default function Settings({
     showToast("バックアップファイルを保存しました。");
   };
 
+  // NOTE: These handlers are defined without useCallback to ensure a new function is created on each render.
+  // This can help avoid issues with stale closures and ensures the browser's security model
+  // for `showOpenFilePicker` (which requires a direct user interaction) is always satisfied.
   const handleRestore = async () => {
     if (!("showOpenFilePicker" in window)) {
-      showToast(
-        "お使いのブラウザはFile System Access APIをサポートしていません。",
-        5000
-      );
+      showToast("お使いのブラウザは対応していません。", 5000);
       return;
     }
 
@@ -272,6 +272,10 @@ export default function Settings({
       });
       const file = await fileHandle.getFile();
       const buffer = await file.arrayBuffer();
+      if (buffer.byteLength === 0) {
+        showToast("ファイルが空です。", 5000);
+        return;
+      }
       setShowRestoreConfirm({buffer, name: file.name});
     } catch (error) {
       if ((error as DOMException).name === "AbortError") {
@@ -285,15 +289,12 @@ export default function Settings({
 
   const handleConvert = async () => {
     if (!("showOpenFilePicker" in window)) {
-      showToast(
-        "お使いのブラウザはFile System Access APIをサポートしていません。",
-        5000
-      );
+      showToast("お使いのブラウザは対応していません。", 5000);
       return;
     }
 
     setIsConverting(true);
-    showToast("ミミノートの変換を開始します...", 10000);
+    showToast("ミミノートの変換を開始します...", 3000);
 
     try {
       const [fileHandle] = await window.showOpenFilePicker({
@@ -310,6 +311,11 @@ export default function Settings({
       });
       const file = await fileHandle.getFile();
       const buffer = await file.arrayBuffer();
+
+      if (buffer.byteLength === 0) {
+        throw new Error("ファイルが空です。");
+      }
+
       const notes = await parseMimiNoteBackup(buffer);
 
       if (notes.length === 0) {
@@ -351,9 +357,7 @@ export default function Settings({
   ) => {
     setShowRestoreConfirm(null);
     if (!restoreData || restoreData.buffer.byteLength === 0) {
-      if (restoreData) {
-        showToast(`復元に失敗しました: ファイルが空です。`, 5000);
-      }
+      showToast(`復元に失敗しました: ファイルが空です。`, 5000);
       return;
     }
 
