@@ -256,7 +256,10 @@ export async function parseMimiNoteBackup(
 }
 
 // --- Icon Components (Memoized) ---
-const RabbitIcon = React.memo<{className?: string}>(({className}) => (
+type IconProps = {
+  className?: string;
+};
+const RabbitIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     viewBox="0 0 100 100"
@@ -279,7 +282,7 @@ const RabbitIcon = React.memo<{className?: string}>(({className}) => (
     </g>
   </svg>
 ));
-const PlusIcon = React.memo<{className?: string}>(({className}) => (
+const PlusIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -289,7 +292,7 @@ const PlusIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
   </svg>
 ));
-const SearchIcon = React.memo<{className?: string}>(({className}) => (
+const SearchIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -315,7 +318,7 @@ const BookmarkIcon = React.memo<{className?: string; isFilled?: boolean}>(
     </svg>
   )
 );
-const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
+const ChevronLeftIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -325,7 +328,7 @@ const ChevronLeftIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
   </svg>
 ));
-const TrashIcon = React.memo<{className?: string}>(({className}) => (
+const TrashIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -335,7 +338,7 @@ const TrashIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
   </svg>
 ));
-const CogIcon = React.memo<{className?: string}>(({className}) => (
+const CogIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -345,7 +348,7 @@ const CogIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M 9.6660156 2 L 9.1757812 4.5234375 C 8.3516137 4.8342536 7.5947862 5.2699307 6.9316406 5.8144531 L 4.5078125 4.9785156 L 2.171875 9.0214844 L 4.1132812 10.708984 C 4.0386488 11.16721 4 11.591845 4 12 C 4 12.408768 4.0398071 12.832626 4.1132812 13.291016 L 4.1132812 13.292969 L 2.171875 14.980469 L 4.5078125 19.021484 L 6.9296875 18.1875 C 7.5928951 18.732319 8.3514346 19.165567 9.1757812 19.476562 L 9.6660156 22 L 14.333984 22 L 14.824219 19.476562 C 15.648925 19.165543 16.404903 18.73057 17.068359 18.185547 L 19.492188 19.021484 L 21.826172 14.980469 L 19.886719 13.291016 C 19.961351 12.83279 20 12.408155 20 12 C 20 11.592457 19.96113 11.168374 19.886719 10.710938 L 19.886719 10.708984 L 21.828125 9.0195312 L 19.492188 4.9785156 L 17.070312 5.8125 C 16.407106 5.2676813 15.648565 4.8344327 14.824219 4.5234375 L 14.333984 2 L 9.6660156 2 z M 11.314453 4 L 12.685547 4 L 13.074219 6 L 14.117188 6.3945312 C 14.745852 6.63147 15.310672 6.9567546 15.800781 7.359375 L 16.664062 8.0664062 L 18.585938 7.40625 L 19.271484 8.5917969 L 17.736328 9.9277344 L 17.912109 11.027344 L 17.912109 11.029297 C 17.973258 11.404235 18 11.718768 18 12 C 18 12.281232 17.973259 12.595718 17.912109 12.970703 L 17.734375 14.070312 L 19.269531 15.40625 L 18.583984 16.59375 L 16.664062 15.931641 L 15.798828 16.640625 C 15.308719 17.043245 14.745852 17.36853 14.117188 17.605469 L 14.115234 17.605469 L 13.072266 18 L 12.683594 20 L 11.314453 20 L 10.925781 18 L 9.8828125 17.605469 C 9.2541467 17.36853 8.6893282 17.043245 8.1992188 16.640625 L 7.3359375 15.933594 L 5.4140625 16.59375 L 4.7285156 15.408203 L 6.265625 14.070312 L 6.0878906 12.974609 L 6.0878906 12.972656 C 6.0276183 12.596088 6 12.280673 6 12 C 6 11.718768 6.026742 11.404282 6.0878906 11.029297 L 6.265625 9.9296875 L 4.7285156 8.59375 L 5.4140625 7.40625 L 7.3359375 8.0683594 L 8.1992188 7.359375 C 8.6893282 6.9567546 9.2541467 6.6314701 9.8828125 6.3945312 L 10.925781 6 L 11.314453 4 z M 12 8 C 9.8034768 8 8 9.8034768 8 12 C 8 14.196523 9.8034768 16 12 16 C 14.196523 16 16 14.196523 16 12 C 16 9.8034768 14.196523 8 12 8 z M 12 10 C 13.111477 10 14 10.888523 14 12 C 14 13.111477 13.111477 14 12 14 C 10.888523 14 10 13.111477 10 12 C 10 10.888523 10.888523 10 12 10 z"></path>
   </svg>
 ));
-const BoldIcon = React.memo<{className?: string}>(({className}) => (
+const BoldIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -355,7 +358,7 @@ const BoldIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z" />
   </svg>
 ));
-const UnderlineIcon = React.memo<{className?: string}>(({className}) => (
+const UnderlineIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -365,7 +368,7 @@ const UnderlineIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zm-7 2v2h14v-2H5z" />
   </svg>
 ));
-const MicrophoneIcon = React.memo<{className?: string}>(({className}) => (
+const MicrophoneIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -375,7 +378,7 @@ const MicrophoneIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />
   </svg>
 ));
-const BellIcon = React.memo<{className?: string}>(({className}) => (
+const BellIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -385,7 +388,7 @@ const BellIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z" />
   </svg>
 ));
-const BellIconFilled = React.memo<{className?: string}>(({className}) => (
+const BellIconFilled = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -395,7 +398,7 @@ const BellIconFilled = React.memo<{className?: string}>(({className}) => (
     <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
   </svg>
 ));
-const CheckIcon = React.memo<{className?: string}>(({className}) => (
+const CheckIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -405,7 +408,7 @@ const CheckIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
   </svg>
 ));
-const CloseIcon = React.memo<{className?: string}>(({className}) => (
+const CloseIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -415,7 +418,7 @@ const CloseIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
   </svg>
 ));
-const ShareIcon = React.memo<{className?: string}>(({className}) => (
+const ShareIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -425,7 +428,7 @@ const ShareIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L16.04,7.15C16.56,7.62 17.24,7.92 18,7.92C19.66,7.92 21,6.58 21,5C21,3.42 19.66,2 18,2C16.34,2 15,3.42 15,5C15,5.24 15.04,5.47 15.09,5.7L7.96,9.85C7.44,9.38 6.76,9.08 6,9.08C4.34,9.08 3,10.42 3,12C3,13.58 4.34,14.92 6,14.92C6.76,14.92 7.44,14.62 7.96,14.15L15.09,18.3C15.04,18.53 15,18.76 15,19C15,20.58 16.34,22 18,22C19.66,22 21,20.58 21,19C21,17.42 19.66,16.08 18,16.08Z" />
   </svg>
 ));
-const StrikethroughIcon = React.memo<{className?: string}>(({className}) => (
+const StrikethroughIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -435,7 +438,7 @@ const StrikethroughIcon = React.memo<{className?: string}>(({className}) => (
     <path d="M10 19h4v-3h-4v3zM5 4v3h5v3h4V7h5V4H5zM3 14h18v-2H3v2z" />
   </svg>
 ));
-const SortIcon = React.memo<{className?: string}>(({className}) => (
+const SortIcon = React.memo<IconProps>(({className}) => (
   <svg
     className={className}
     xmlns="http://www.w3.org/2000/svg"
@@ -513,6 +516,36 @@ const FONT_SIZE_COMMAND_MAP: {[key: string]: string} = {
 };
 
 // --- Custom Hooks ---
+
+// ✅ NEW: localStorageとstateを同期させるカスタムフック
+function useLocalStorage<T>(
+  key: string,
+  initialValue: T
+): [T, (value: T | ((val: T) => T)) => void] {
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error(`Error reading localStorage key “${key}”:`, error);
+      return initialValue;
+    }
+  });
+
+  const setValue = (value: T | ((val: T) => T)) => {
+    try {
+      const valueToStore =
+        value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error(`Error setting localStorage key “${key}”:`, error);
+    }
+  };
+
+  return [storedValue, setValue];
+}
+
 const useNotes = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
@@ -790,26 +823,19 @@ export default function App() {
     Set<string>
   >(new Set());
   const [showBackupBadge, setShowBackupBadge] = useState(false);
-  const [sortBy, setSortBy] = useState<string>("updatedAt_desc");
+  const [sortBy, setSortBy] = useLocalStorage<string>(
+    "nana-memo-sort-by",
+    "updatedAt_desc"
+  );
   const [startVoiceOnMount, setStartVoiceOnMount] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] =
     useState<DeleteConfirmation | null>(null);
-  const [isLinkifyEnabled, setIsLinkifyEnabled] = useState(() => {
-    try {
-      const saved = localStorage.getItem("nana-memo-list-linkify");
-      return saved !== null ? JSON.parse(saved) : true;
-    } catch {
-      return true;
-    }
-  });
-  const [isEditorLinkifyEnabled, setIsEditorLinkifyEnabled] = useState(() => {
-    try {
-      const saved = localStorage.getItem("nana-memo-editor-linkify");
-      return saved !== null ? JSON.parse(saved) : false; // Default false for safety
-    } catch {
-      return false;
-    }
-  });
+  const [isLinkifyEnabled, setIsLinkifyEnabled] = useLocalStorage<boolean>(
+    "nana-memo-list-linkify",
+    true
+  );
+  const [isEditorLinkifyEnabled, setIsEditorLinkifyEnabled] =
+    useLocalStorage<boolean>("nana-memo-editor-linkify", false);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -822,20 +848,6 @@ export default function App() {
   );
   const activeNoteRef = useRef(activeNote);
   activeNoteRef.current = activeNote;
-
-  useEffect(() => {
-    localStorage.setItem(
-      "nana-memo-list-linkify",
-      JSON.stringify(isLinkifyEnabled)
-    );
-  }, [isLinkifyEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem(
-      "nana-memo-editor-linkify",
-      JSON.stringify(isEditorLinkifyEnabled)
-    );
-  }, [isEditorLinkifyEnabled]);
 
   useEffect(() => {
     const loadingOverlay = document.getElementById("loading-overlay");
@@ -955,17 +967,6 @@ export default function App() {
         handleBeforeInstallPrompt
       );
   }, []);
-
-  // Load settings from localStorage
-  useEffect(() => {
-    const savedSortBy = localStorage.getItem("nana-memo-sort-by");
-    if (savedSortBy) setSortBy(savedSortBy);
-  }, []);
-
-  // Save settings to localStorage
-  useEffect(() => {
-    localStorage.setItem("nana-memo-sort-by", sortBy);
-  }, [sortBy]);
 
   useEffect(() => {
     if (notes.length === 0) return;
@@ -1240,7 +1241,7 @@ type NoteListProps = {
   longPressTriggered: React.MutableRefObject<boolean>;
   createNote: (startWithVoice?: boolean) => void;
   sortBy: string;
-  setSortBy: (sortBy: string) => void;
+  setSortBy: (sortBy: string | ((val: string) => string)) => void;
   isLinkifyEnabled: boolean;
 };
 const NoteList = React.memo<NoteListProps>(
@@ -1624,11 +1625,24 @@ const NoteEditor = React.memo<NoteEditorProps>(
     }, [startVoiceOnMount, onVoiceInput, setStartVoiceOnMount]);
 
     useEffect(() => {
-      // This only needs to be set once.
+      // NOTE: document.execCommand is deprecated, but it's the simplest way
+      // to implement rich text editing features for now.
       document.execCommand("styleWithCSS", false, "true");
     }, []);
 
-    const applyStyle = useCallback(
+    const execCommandWithInputEvent = useCallback(
+      (command: string, value?: string) => {
+        // NOTE: document.execCommand is deprecated.
+        document.execCommand(command, false, value);
+        // Manually trigger input event to ensure React state updates
+        editorRef.current?.dispatchEvent(
+          new Event("input", {bubbles: true, cancelable: true})
+        );
+      },
+      []
+    );
+
+    const applyStyleToSelection = useCallback(
       (command: string, value?: string) => {
         if (
           selectionRangeRef.current &&
@@ -1640,14 +1654,11 @@ const NoteEditor = React.memo<NoteEditorProps>(
             selection.removeAllRanges();
             selection.addRange(selectionRangeRef.current);
           }
-          document.execCommand(command, false, value);
+          execCommandWithInputEvent(command, value);
           saveSelection();
-          editorRef.current?.dispatchEvent(
-            new Event("input", {bubbles: true, cancelable: true})
-          );
         }
       },
-      [saveSelection]
+      [execCommandWithInputEvent, saveSelection]
     );
 
     const applyColor = useCallback(
@@ -1656,7 +1667,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
           selectionRangeRef.current &&
           selectionRangeRef.current.toString().length > 0
         ) {
-          applyStyle(
+          applyStyleToSelection(
             "foreColor",
             (isDarkMode ? COLOR_HEX_MAP_DARK : COLOR_HEX_MAP_LIGHT)[colorClass]
           );
@@ -1664,7 +1675,7 @@ const NoteEditor = React.memo<NoteEditorProps>(
           onUpdate(note.id, {color: colorClass});
         }
       },
-      [applyStyle, isDarkMode, note.id, onUpdate]
+      [applyStyleToSelection, isDarkMode, note.id, onUpdate]
     );
 
     const applyFontSize = useCallback(
@@ -1673,12 +1684,12 @@ const NoteEditor = React.memo<NoteEditorProps>(
           selectionRangeRef.current &&
           selectionRangeRef.current.toString().length > 0
         ) {
-          applyStyle("fontSize", FONT_SIZE_COMMAND_MAP[sizeClass]);
+          applyStyleToSelection("fontSize", FONT_SIZE_COMMAND_MAP[sizeClass]);
         } else {
           onUpdate(note.id, {fontSize: sizeClass});
         }
       },
-      [applyStyle, note.id, onUpdate]
+      [applyStyleToSelection, note.id, onUpdate]
     );
 
     const handleToggleNotificationPin = useCallback(async () => {
@@ -1847,21 +1858,21 @@ const NoteEditor = React.memo<NoteEditorProps>(
             <div className="flex items-center">
               <button
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => document.execCommand("bold")}
+                onClick={() => execCommandWithInputEvent("bold")}
                 className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
               >
                 <BoldIcon className="w-5 h-5" />
               </button>
               <button
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => document.execCommand("underline")}
+                onClick={() => execCommandWithInputEvent("underline")}
                 className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
               >
                 <UnderlineIcon className="w-5 h-5" />
               </button>
               <button
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => document.execCommand("strikeThrough")}
+                onClick={() => execCommandWithInputEvent("strikeThrough")}
                 className="p-2 rounded-full hover:bg-amber-100 dark:hover:bg-slate-700"
               >
                 <StrikethroughIcon className="w-5 h-5" />
