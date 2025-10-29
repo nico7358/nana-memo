@@ -243,6 +243,7 @@ export default function Settings({
     name: string;
   } | null>(null);
   const [, setShowBackupBadge] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const filePromiseRef = useRef<{
@@ -306,6 +307,7 @@ export default function Settings({
   const openFileWithFallback = async (
     options: OpenFilePickerOptions
   ): Promise<File> => {
+    // 1. File System Access APIを試す（PC環境向け）
     if ("showOpenFilePicker" in window) {
       try {
         const [fileHandle] = await window.showOpenFilePicker(options);
@@ -319,12 +321,12 @@ export default function Settings({
       }
     }
 
+    // 2. 従来のinput要素を使用（モバイル環境向け）
     console.log('Using static <input type="file"> fallback.');
     const accept =
       options.types
         ?.flatMap((type) => Object.values(type.accept).flat())
-        .join(",") ?? "";
-
+        .join(",") || "";
     return triggerFilePicker(accept);
   };
 
@@ -534,6 +536,46 @@ export default function Settings({
     setShowRestoreConfirm(null);
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      const supported =
+        file.name.toLowerCase().endsWith(".mimibk") ||
+        file.name.toLowerCase().endsWith(".db") ||
+        file.name.toLowerCase().endsWith(".json");
+      if (supported) {
+        try {
+          const buffer = await readFileAsArrayBuffer(file);
+          setShowRestoreConfirm({buffer, name: file.name});
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "ファイルの読み込みに失敗しました。";
+          showToast(message, 5000);
+        }
+      } else {
+        showToast(
+          "サポートされていないファイル形式です。(.json, .mimibk, .db)",
+          3000
+        );
+      }
+    }
+  };
+
   return (
     <>
       <input
@@ -558,7 +600,14 @@ export default function Settings({
           <div className="w-10 h-10" /> {/* 中央揃えのためのスペーサー */}
         </header>
 
-        <main className="flex-grow overflow-y-auto p-4 space-y-8">
+        <main
+          className={`flex-grow overflow-y-auto p-4 space-y-8 transition-colors ${
+            isDragOver ? "bg-rose-50 dark:bg-rose-900/20" : ""
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {installPrompt && (
             <div className="bg-white dark:bg-slate-800 rounded-lg p-4 sm:p-6 shadow-md">
               <h2 className="flex items-center text-lg font-bold mb-3 text-blue-600 dark:text-blue-400 font-kiwi">
@@ -607,6 +656,21 @@ export default function Settings({
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 mb-4">
                 以前のバックアップファイルや、他のメモアプリのデータから復元します。
               </p>
+              <div
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors mb-4 ${
+                  isDragOver
+                    ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20"
+                    : "border-slate-300 dark:border-slate-600"
+                }`}
+              >
+                <UploadIcon className="w-10 h-10 mx-auto mb-3 text-slate-400 dark:text-slate-500" />
+                <p className="font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  ファイルをここにドラッグ＆ドロップ
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-500">
+                  または下のボタンから選択
+                </p>
+              </div>
               <div className="space-y-3">
                 <button
                   onClick={handleRestore}

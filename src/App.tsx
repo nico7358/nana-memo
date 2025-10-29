@@ -897,6 +897,16 @@ export default function App() {
           });
 
           showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
+
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.get("file_handler") === "true") {
+            setShowSettingsPage(false);
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname
+            );
+          }
         } catch (e) {
           console.error("File Handling API error:", e);
           const message = e instanceof Error ? e.message : String(e);
@@ -904,7 +914,7 @@ export default function App() {
         }
       });
     }
-  }, [showToast, setNotes]);
+  }, [showToast, setNotes, setShowSettingsPage]);
 
   useEffect(() => {
     const lastBackupTime = parseInt(

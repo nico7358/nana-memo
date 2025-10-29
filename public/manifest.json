@@ -5,7 +5,7 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f1f5f9",
+  "background_color": "#fffbeb",
   "theme_color": "#ec4899",
   "icons": [
     {
@@ -21,8 +21,9 @@
   ],
   "file_handlers": [
     {
-      "action": "/",
+      "action": "/?file_handler=true",
       "accept": {
+        "application/json": [".json"],
         "application/octet-stream": [".mimibk", ".db"],
         "application/vnd.sqlite3": [".sqlite", ".sqlite3"]
       },
