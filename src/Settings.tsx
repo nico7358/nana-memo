@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useRef} from "react";
-import {type Note, parseMimiNoteBackup} from "@/App.tsx";
+import {type Note} from "@/App.tsx";
 
 // --- 型定義 ---
 interface BeforeInstallPromptEvent extends Event {
@@ -39,36 +39,53 @@ function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
     if (!file) {
       return reject(new Error("ファイルが指定されていません。"));
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      try {
-        const base64String = result.substring(result.indexOf(",") + 1);
-        if (!base64String) {
-          throw new Error("ファイルが空か、読み込みに失敗しました。");
+
+    // ファイルサイズチェック（大きすぎるファイルの対策）
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+    if (file.size > MAX_FILE_SIZE) {
+      return reject(
+        new Error(
+          "ファイルが大きすぎます。50MB以下のファイルを選択してください。"
+        )
+      );
+    }
+
+    // モバイル環境ではFileReaderの代わりにfetchとarrayBufferを使用
+    if (window.FileReader && navigator.userAgent.includes("Mobile")) {
+      // モバイル環境向けの読み込み方法
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const result = reader.result as string;
+          const base64String = result.substring(result.indexOf(",") + 1);
+          if (!base64String) {
+            throw new Error("ファイルが空か、読み込みに失敗しました。");
+          }
+          const binaryString = atob(base64String);
+          const len = binaryString.length;
+          const buffer = new ArrayBuffer(len);
+          const bytes = new Uint8Array(buffer);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          if (buffer.byteLength === 0) {
+            throw new Error("ファイルが空か、読み込みに失敗しました。");
+          }
+          resolve(buffer);
+        } catch (e) {
+          console.error("Failed to process data URL", e);
+          reject(new Error("データURLからのファイル読み込みに失敗しました。"));
         }
-        const binaryString = atob(base64String);
-        const len = binaryString.length;
-        // FIX: Explicitly create an ArrayBuffer to resolve the ArrayBufferLike type error.
-        const buffer = new ArrayBuffer(len);
-        const bytes = new Uint8Array(buffer);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        if (buffer.byteLength === 0) {
-          throw new Error("ファイルが空か、読み込みに失敗しました。");
-        }
-        resolve(buffer);
-      } catch (e) {
-        console.error("Failed to process data URL", e);
-        reject(new Error("データURLからのファイル読み込みに失敗しました。"));
-      }
-    };
-    reader.onerror = (e) => {
-      console.error("FileReader error", e);
-      reject(new Error("ファイルリーダーでエラーが発生しました。"));
-    };
-    reader.readAsDataURL(file);
+      };
+      reader.onerror = (e) => {
+        console.error("FileReader error", e);
+        reject(new Error("ファイルリーダーでエラーが発生しました。"));
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // PC環境向けの読み込み方法
+      file.arrayBuffer().then(resolve).catch(reject);
+    }
   });
 }
 
@@ -164,6 +181,195 @@ const InstallIcon = React.memo<{className?: string}>(({className}) => (
   </svg>
 ));
 
+const workerCode = `
+  import initSqlJs from 'sql.js';
+  import pako from 'pako';
+
+  // Type definition for Note, copied from src/App.tsx
+  type Note = {
+    id: string;
+    content: string;
+    createdAt: number;
+    updatedAt: number;
+    isPinned: boolean;
+    color: string;
+    font: string;
+    fontSize: string;
+  };
+
+  // モバイル環境でのメモリ使用量を考慮したSQLite処理
+  async function parseMimiNoteBackup(buffer) {
+    if (!buffer || buffer.byteLength === 0) {
+      throw new Error("ファイルが空です。");
+    }
+
+    let bytes = new Uint8Array(buffer);
+    
+    // モバイル環境でのメモリ使用量を考慮
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    // Decompress if it looks like a zlib-compressed file
+    if (bytes.length > 2 && bytes[0] === 0x78) {
+      try {
+        bytes = pako.inflate(bytes);
+        console.log("Decompressed zlib-based backup file.");
+      } catch (e) {
+        console.warn("zlib decompression failed, proceeding with original file data.", e);
+      }
+    }
+
+    // SQLite解析処理
+    try {
+      const head = new TextDecoder().decode(bytes.slice(0, 16));
+      if (!head.startsWith("SQLite format 3")) {
+        throw new Error("SQLiteヘッダーが見つかりません。");
+      }
+
+      const SQL = await initSqlJs({
+        locateFile: (file) => \`https://aistudiocdn.com/sql.js@^1.13.0/\${file}\`
+      });
+
+      const db = new SQL.Database(bytes);
+      try {
+        const result = db.exec("SELECT name FROM sqlite_master WHERE type='table';");
+        if (!result.length) throw new Error("DB内にテーブルが見つかりません。");
+
+        const tables = result.flatMap((t) => t.values.map((v) => String(v[0])));
+        const tableName =
+          tables.find((t) => t.toUpperCase() === "NOTE_TB") ||
+          tables.find((t) => t.toLowerCase().includes("note")) ||
+          tables[0];
+        if (!tableName) throw new Error("メモのテーブルが見つかりません。");
+
+        const rowsResult = db.exec(\`SELECT * FROM "\${tableName}";\`);
+        if (!rowsResult.length) return []; // No data is not an error
+
+        const rows = rowsResult[0].values;
+        const columns = rowsResult[0].columns;
+
+        // モバイル環境では大きなデータセットを分割して処理
+        const notes = [];
+        const chunkSize = isMobile ? 100 : 500;
+        
+        for (let i = 0; i < rows.length; i += chunkSize) {
+          const chunk = rows.slice(i, i + chunkSize);
+          
+          for (const row of chunk) {
+            const obj = {};
+            columns.forEach((col, idx) => (obj[col] = row[idx]));
+            
+            const createdAt = obj.creation_date 
+              ? new Date(obj.creation_date).getTime() 
+              : Date.now();
+            const updatedAt = obj.update_date 
+              ? new Date(obj.update_date).getTime() 
+              : createdAt;
+              
+            notes.push({
+              id: String(obj._id || createdAt + Math.random()),
+              content: String(obj.text || obj.title || ""),
+              createdAt,
+              updatedAt,
+              isPinned: Boolean(obj.ear === 1),
+              color: "text-slate-800 dark:text-slate-200",
+              font: "font-sans",
+              fontSize: "text-lg",
+            });
+          }
+          
+          // モバイル環境では処理の進捗を報告
+          if (isMobile) {
+            self.postMessage({
+              type: 'PROGRESS',
+              progress: Math.min((i + chunkSize) / rows.length, 1)
+            });
+          }
+        }
+        
+        return notes;
+      } finally {
+        db.close();
+      }
+    } catch (sqliteError) {
+      console.warn("SQLite parsing failed, attempting fallback text extraction:", sqliteError);
+      // 既存のフォールバック処理...
+      try {
+        const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+        const regex = /"text"\\s*:\\s*"((?:\\\\"|[^"])*)"/g;
+        let match;
+        const extractedNotes = [];
+        let i = 0;
+        while ((match = regex.exec(text)) !== null) {
+          try {
+            const content = JSON.parse(\`"\${match[1]}"\`);
+            if (content && String(content).trim()) {
+              const now = Date.now() + i++;
+              extractedNotes.push({
+                id: String(now),
+                content: String(content),
+                createdAt: now,
+                updatedAt: now,
+                isPinned: false,
+                color: "text-slate-800 dark:text-slate-200",
+                font: "font-sans",
+                fontSize: "text-lg",
+              });
+            }
+          } catch (e) {
+            console.warn("Could not parse extracted text:", match[1]);
+          }
+        }
+        if (extractedNotes.length > 0) return extractedNotes;
+        throw new Error("テキストデータからのメモ抽出に失敗しました。");
+      } catch (fallbackError) {
+        console.error("Fallback text extraction failed:", fallbackError);
+        const message = sqliteError instanceof Error ? sqliteError.message : String(sqliteError);
+        throw new Error(\`DBの解析に失敗しました: \${message}\`);
+      }
+    }
+  }
+
+  async function parseFile(buffer, name) {
+    const fileName = name.toLowerCase();
+    if (fileName.endsWith('.json')) {
+      const text = new TextDecoder().decode(buffer);
+      const parsedData = JSON.parse(text);
+      if (Array.isArray(parsedData) && (parsedData.length === 0 || 'content' in parsedData[0])) {
+        return parsedData.map((n) => ({
+          id: n.id || String(Date.now() + Math.random()),
+          content: n.content || "",
+          createdAt: n.createdAt || Date.now(),
+          updatedAt: n.updatedAt || Date.now(),
+          isPinned: n.isPinned || false,
+          color: n.color || "text-slate-800 dark:text-slate-200",
+          font: n.font || "font-sans",
+          fontSize: n.fontSize || "text-lg",
+        }));
+      }
+      throw new Error("無効なJSONファイル形式です。");
+    } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
+      return await parseMimiNoteBackup(buffer);
+    } else {
+      throw new Error("サポートされていないファイル形式です。");
+    }
+  }
+
+  self.onmessage = async (event) => {
+    const { type, buffer, name } = event.data;
+    try {
+      if (type === 'RESTORE') {
+        const notes = await parseFile(buffer, name);
+        self.postMessage({ success: true, type, notes });
+      } else if (type === 'CONVERT') {
+        const notes = await parseMimiNoteBackup(buffer);
+        self.postMessage({ success: true, type, notes });
+      }
+    } catch (e) {
+      self.postMessage({ success: false, type, error: e.message || String(e) });
+    }
+  };
+`;
+
 // --- UI部品 ---
 const SettingsCard = ({
   title,
@@ -237,19 +443,98 @@ export default function Settings({
   isEditorLinkifyEnabled,
   setIsEditorLinkifyEnabled,
 }: SettingsProps) {
-  const [isConverting, setIsConverting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<{
-    buffer: ArrayBuffer;
-    name: string;
+    file: File;
   } | null>(null);
   const [, setShowBackupBadge] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [showProgress, setShowProgress] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const filePromiseRef = useRef<{
     resolve: (file: File) => void;
     reject: (reason?: unknown) => void;
   } | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const originalConvertFileName = useRef("");
+
+  useEffect(() => {
+    const blob = new Blob([workerCode], {type: "application/javascript"});
+    const worker = new Worker(URL.createObjectURL(blob), {type: "module"});
+    workerRef.current = worker;
+
+    worker.onmessage = (event: MessageEvent) => {
+      const {success, type, notes, error, progress} = event.data;
+
+      if (progress !== undefined) {
+        setImportProgress(Math.round(progress * 100));
+        return;
+      }
+
+      setIsProcessing(false);
+      setShowProgress(false);
+      setShowRestoreConfirm(null);
+      setImportProgress(0);
+
+      if (!success) {
+        const action = type === "RESTORE" ? "復元" : "変換";
+        showToast(`${action}に失敗しました: ${error}`, 5000);
+        console.error(`Failed to ${type.toLowerCase()} notes:`, error);
+        return;
+      }
+
+      if (type === "RESTORE") {
+        setNotes((currentNotes: Note[]) => {
+          const notesMap = new Map<string, Note>();
+          for (const note of currentNotes) notesMap.set(note.id, note);
+          for (const importedNote of notes) {
+            const existingNote = notesMap.get(importedNote.id);
+            if (
+              !existingNote ||
+              importedNote.updatedAt >= existingNote.updatedAt
+            ) {
+              notesMap.set(importedNote.id, importedNote);
+            }
+          }
+          return Array.from(notesMap.values());
+        });
+        onClose();
+        showToast(`${notes.length}件のメモを復元・追加しました。`);
+      } else if (type === "CONVERT") {
+        if (notes.length === 0) {
+          showToast("変換対象のメモが見つかりませんでした。", 3000);
+          return;
+        }
+        const jsonString = JSON.stringify(notes, null, 2);
+        const blob = new Blob([jsonString], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const originalFileNameBase = originalConvertFileName.current.replace(
+          /\.[^/.]+$/,
+          ""
+        );
+        a.download = `${originalFileNameBase}_nanamemo.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(
+          `${notes.length}件のメモを変換し、ダウンロードしました！`,
+          5000
+        );
+      }
+    };
+
+    const workerUrl = URL.createObjectURL(blob);
+
+    return () => {
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+  }, [onClose, setNotes, showToast]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (filePromiseRef.current) {
@@ -389,24 +674,47 @@ export default function Settings({
         ],
         multiple: false,
       });
-      const buffer = await readFileAsArrayBuffer(file);
-      setShowRestoreConfirm({buffer, name: file.name});
+
+      // ファイル形式のチェック
+      const fileName = file.name.toLowerCase();
+      if (
+        !fileName.endsWith(".json") &&
+        !fileName.endsWith(".mimibk") &&
+        !fileName.endsWith(".db")
+      ) {
+        showToast(
+          "サポートされていないファイル形式です。.json、.mimibk、.dbファイルを選択してください。",
+          5000
+        );
+        return;
+      }
+
+      // ファイルサイズのチェック
+      const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+      if (file.size > MAX_FILE_SIZE) {
+        showToast(
+          "ファイルが大きすぎます。50MB以下のファイルを選択してください。",
+          5000
+        );
+        return;
+      }
+
+      setShowRestoreConfirm({file});
     } catch (error) {
-      if ((error as DOMException).name === "AbortError") {
-        console.log("File picker was cancelled by the user.");
-      } else {
+      if ((error as DOMException).name !== "AbortError") {
         console.error("File picker error:", error);
-        const message =
+        showToast(
           error instanceof Error
             ? error.message
-            : "ファイルの読み込みに失敗しました。";
-        showToast(message, 5000);
+            : "ファイルの読み込みに失敗しました。",
+          5000
+        );
       }
     }
   };
 
   const handleConvert = async () => {
-    setIsConverting(true);
+    setIsProcessing(true);
     showToast("ミミノートの変換を開始します...", 3000);
 
     try {
@@ -426,109 +734,46 @@ export default function Settings({
         ],
         multiple: false,
       });
+      originalConvertFileName.current = file.name;
       const buffer = await readFileAsArrayBuffer(file);
-      const notes = await parseMimiNoteBackup(buffer);
-
-      if (notes.length === 0) {
-        showToast("変換対象のメモが見つかりませんでした。", 3000);
-        return;
-      }
-
-      const jsonString = JSON.stringify(notes, null, 2);
-      const blob = new Blob([jsonString], {type: "application/json"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const originalFileName = file.name.replace(/\.[^/.]+$/, "");
-      a.download = `${originalFileName}_nanamemo.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast(
-        `${notes.length}件のメモを変換し、ダウンロードしました！`,
-        5000
+      workerRef.current?.postMessage(
+        {type: "CONVERT", buffer, name: file.name},
+        [buffer]
       );
     } catch (error) {
-      if ((error as DOMException).name === "AbortError") {
-        console.log("File picker was cancelled by the user.");
-      } else {
+      if ((error as DOMException).name !== "AbortError") {
         console.error("ミミノートの変換に失敗しました:", error);
         const message = error instanceof Error ? error.message : String(error);
         showToast(`ミミノートの変換に失敗しました: ${message}`, 5000);
       }
-    } finally {
-      setIsConverting(false);
+      setIsProcessing(false);
     }
   };
 
-  const proceedWithRestore = async (
-    restoreData: {buffer: ArrayBuffer; name: string} | null
-  ) => {
+  const proceedWithRestore = async (restoreData: {file: File} | null) => {
+    if (!restoreData) return;
+    setIsProcessing(true);
+    setShowProgress(true);
     setShowRestoreConfirm(null);
-    if (!restoreData || restoreData.buffer.byteLength === 0) {
-      showToast(`復元に失敗しました: ファイルが空です。`, 5000);
-      return;
-    }
-
-    const {buffer, name} = restoreData;
-    showToast("バックアップファイルを解析中...", 10000);
-
     try {
-      let importedNotes: Note[];
-      const fileName = name.toLowerCase();
-
-      if (fileName.endsWith(".json")) {
-        const text = new TextDecoder().decode(buffer);
-        const parsedData = JSON.parse(text);
-        if (
-          Array.isArray(parsedData) &&
-          (parsedData.length === 0 || "content" in parsedData[0])
-        ) {
-          importedNotes = parsedData.map((n: Partial<Note>) => ({
-            id: n.id || String(Date.now() + Math.random()),
-            content: n.content || "",
-            createdAt: n.createdAt || Date.now(),
-            updatedAt: n.updatedAt || Date.now(),
-            isPinned: n.isPinned || false,
-            color: n.color || "text-slate-800 dark:text-slate-200",
-            font: n.font || "font-sans",
-            fontSize: n.fontSize || "text-lg",
-          }));
-        } else {
-          throw new Error("無効なJSONファイル形式です。");
-        }
-      } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
-        importedNotes = await parseMimiNoteBackup(buffer);
-      } else {
-        throw new Error("サポートされていないファイル形式です。");
+      const buffer = await readFileAsArrayBuffer(restoreData.file);
+      if (buffer.byteLength === 0) {
+        throw new Error("ファイルが空です。");
       }
-
-      setNotes((currentNotes) => {
-        const notesMap = new Map<string, Note>();
-        for (const note of currentNotes) {
-          notesMap.set(note.id, note);
-        }
-        for (const importedNote of importedNotes) {
-          const existingNote = notesMap.get(importedNote.id);
-          if (
-            !existingNote ||
-            importedNote.updatedAt >= existingNote.updatedAt
-          ) {
-            notesMap.set(importedNote.id, importedNote);
-          }
-        }
-        return Array.from(notesMap.values());
-      });
-
-      onClose();
-      showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      showToast(`復元に失敗しました: ${errorMessage}`, 5000);
-      console.error("Failed to restore notes:", error);
+      showToast("バックアップファイルを解析中...", 10000);
+      workerRef.current?.postMessage(
+        {type: "RESTORE", buffer, name: restoreData.file.name},
+        [buffer]
+      );
+    } catch (error) {
+      setIsProcessing(false);
+      setShowProgress(false);
+      showToast(
+        `復元に失敗しました: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        5000
+      );
     }
   };
 
@@ -557,16 +802,7 @@ export default function Settings({
         file.name.toLowerCase().endsWith(".db") ||
         file.name.toLowerCase().endsWith(".json");
       if (supported) {
-        try {
-          const buffer = await readFileAsArrayBuffer(file);
-          setShowRestoreConfirm({buffer, name: file.name});
-        } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "ファイルの読み込みに失敗しました。";
-          showToast(message, 5000);
-        }
+        setShowRestoreConfirm({file});
       } else {
         showToast(
           "サポートされていないファイル形式です。(.json, .mimibk, .db)",
@@ -674,7 +910,8 @@ export default function Settings({
               <div className="space-y-3">
                 <button
                   onClick={handleRestore}
-                  className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500"
+                  disabled={isProcessing}
+                  className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <UploadIcon className="w-6 h-6 mr-3 flex-shrink-0" />
                   <div>
@@ -686,14 +923,14 @@ export default function Settings({
                 </button>
                 <button
                   onClick={handleConvert}
-                  disabled={isConverting}
+                  disabled={isProcessing}
                   className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-yellow-600 dark:text-yellow-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-yellow-300 dark:hover:border-yellow-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ConvertIcon className="w-6 h-6 mr-3 flex-shrink-0" />
                   <div>
                     <span className="font-bold">
-                      {isConverting
-                        ? "変換中..."
+                      {isProcessing
+                        ? "処理中..."
                         : "ミミノートをnanamemo形式に変換"}
                     </span>
                     <span className="block text-xs text-slate-500 dark:text-slate-400">
@@ -838,6 +1075,24 @@ export default function Settings({
           </button>
         </footer>
       </div>
+      {showProgress && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-sm">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 text-center mb-4">
+              ファイルを処理中...
+            </h2>
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 mb-4">
+              <div
+                className="bg-rose-500 h-2.5 rounded-full transition-all duration-300"
+                style={{width: `${importProgress}%`}}
+              ></div>
+            </div>
+            <p className="text-center text-slate-600 dark:text-slate-400">
+              {importProgress}% 完了
+            </p>
+          </div>
+        </div>
+      )}
       {showRestoreConfirm && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
