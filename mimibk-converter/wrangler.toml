@@ -1,6 +1,0 @@
-# wrangler.toml
-name = "mimibk-converter"
-main = "src/index.js"
-compatibility_date = "2024-09-23" 
-compatibility_flags = ["nodejs_compat"] # 👈 これが重要
-workers_dev = true
