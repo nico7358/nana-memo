@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef} from "react";
+import React, {useState, useEffect, useRef, useMemo} from "react";
 import {type Note, parseMimiNoteBackup} from "@/App.tsx";
 
 // --- 型定義 ---
@@ -244,6 +244,14 @@ export default function Settings({
   } | null>(null);
   const [, setShowBackupBadge] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const isMobile = useMemo(() => {
+    const userAgent =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      navigator.userAgent || navigator.vendor || (window as any).opera;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      userAgent
+    );
+  }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const filePromiseRef = useRef<{
@@ -308,7 +316,7 @@ export default function Settings({
     options: OpenFilePickerOptions
   ): Promise<File> => {
     // 1. File System Access APIを試す（PC環境向け）
-    if ("showOpenFilePicker" in window) {
+    if ("showOpenFilePicker" in window && !isMobile) {
       try {
         const [fileHandle] = await window.showOpenFilePicker(options);
         return await fileHandle.getFile();
@@ -384,6 +392,35 @@ export default function Settings({
             accept: {
               "application/json": [".json"],
               "application/octet-stream": [".mimibk", ".db"],
+            },
+          },
+        ],
+        multiple: false,
+      });
+      const buffer = await readFileAsArrayBuffer(file);
+      setShowRestoreConfirm({buffer, name: file.name});
+    } catch (error) {
+      if ((error as DOMException).name === "AbortError") {
+        console.log("File picker was cancelled by the user.");
+      } else {
+        console.error("File picker error:", error);
+        const message =
+          error instanceof Error
+            ? error.message
+            : "ファイルの読み込みに失敗しました。";
+        showToast(message, 5000);
+      }
+    }
+  };
+
+  const handleMobileRestore = async () => {
+    try {
+      const file = await openFileWithFallback({
+        types: [
+          {
+            description: "nanamemo Backup",
+            accept: {
+              "application/json": [".json"],
             },
           },
         ],
@@ -499,7 +536,10 @@ export default function Settings({
         } else {
           throw new Error("無効なJSONファイル形式です。");
         }
-      } else if (fileName.endsWith(".mimibk") || fileName.endsWith(".db")) {
+      } else if (
+        !isMobile &&
+        (fileName.endsWith(".mimibk") || fileName.endsWith(".db"))
+      ) {
         importedNotes = await parseMimiNoteBackup(buffer);
       } else {
         throw new Error("サポートされていないファイル形式です。");
@@ -525,8 +565,23 @@ export default function Settings({
       onClose();
       showToast(`${importedNotes.length}件のメモを復元・追加しました。`);
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      let errorMessage = "不明なエラーが発生しました。";
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+
+      // より具体的なエラーメッセージを提供
+      if (errorMessage.includes("SQLite")) {
+        errorMessage =
+          "SQLiteファイルの解析に失敗しました。ファイルが破損している可能性があります。";
+      } else if (errorMessage.includes("JSON")) {
+        errorMessage =
+          "JSONファイルの解析に失敗しました。ファイル形式を確認してください。";
+      }
+
       showToast(`復元に失敗しました: ${errorMessage}`, 5000);
       console.error("Failed to restore notes:", error);
     }
@@ -536,19 +591,28 @@ export default function Settings({
     setShowRestoreConfirm(null);
   };
 
+  // handleDragOver関数の修正
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragOver(true);
+    if (!isMobile) {
+      setIsDragOver(true);
+    }
   };
 
+  // handleDragLeave関数の修正
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragOver(false);
+    // ドラッグが要素の外に出た場合のみfalseに設定
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
   };
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+
+    if (isMobile) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
@@ -656,58 +720,101 @@ export default function Settings({
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 mb-4">
                 以前のバックアップファイルや、他のメモアプリのデータから復元します。
               </p>
-              <div
-                className={`border-2 border-dashed rounded-lg p-3 text-center transition-colors max-w-md mx-auto ${
-                  isDragOver
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                    : "border-slate-300 dark:border-slate-600"
-                }`}
-              >
-                <UploadIcon className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
-                  .mimibkまたは.jsonファイルをここにドラッグ＆ドロップ
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-500">
-                  または下のボタンからファイルを選択
-                </p>
-              </div>
-              <div className="space-y-3">
-                <button
-                  onClick={handleRestore}
-                  className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500"
-                >
-                  <UploadIcon className="w-6 h-6 mr-3 flex-shrink-0" />
-                  <div>
-                    <span className="font-bold">バックアップから復元</span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      nanamemo (.json) / ミミノート (.mimibk)
-                    </span>
+              {isMobile ? (
+                <>
+                  <button
+                    onClick={handleMobileRestore}
+                    className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500"
+                  >
+                    <UploadIcon className="w-6 h-6 mr-3 flex-shrink-0" />
+                    <div>
+                      <span className="font-bold">
+                        バックアップから復元 (.json)
+                      </span>
+                      <span className="block text-xs text-slate-500 dark:text-slate-400">
+                        nanamemoのバックアップファイルを選択
+                      </span>
+                    </div>
+                  </button>
+                  {/* ここを入れ替える */}
+                  <div className="flex items-start p-3 mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+                    <InfoIcon className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="mb-2 font-semibold">
+                        スマホでの.mimibk復元について:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>
+                          ミミノートの.mimibkファイルはPCでのみ復元可能です
+                        </li>
+                        <li>PCで.jsonに変換後、スマホで復元できます</li>
+                        <li>
+                          変換方法:
+                          PC版サイトで「ミミノートをnanamemo形式に変換」を選択
+                        </li>
+                        <li>
+                          変換した.jsonファイルをクラウド経由でスマホに転送してください
+                        </li>
+                      </ul>
+                    </div>
                   </div>
-                </button>
-                <button
-                  onClick={handleConvert}
-                  disabled={isConverting}
-                  className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-yellow-600 dark:text-yellow-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-yellow-300 dark:hover:border-yellow-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ConvertIcon className="w-6 h-6 mr-3 flex-shrink-0" />
-                  <div>
-                    <span className="font-bold">
-                      {isConverting
-                        ? "変換中..."
-                        : "ミミノートをnanamemo形式に変換"}
-                    </span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      .mimibk, .db → .json ファイルを生成
-                    </span>
+                </>
+              ) : (
+                <>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-3 text-center transition-colors max-w-md mx-auto ${
+                      isDragOver
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                        : "border-slate-300 dark:border-slate-600"
+                    }`}
+                  >
+                    <UploadIcon className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+                      .mimibkまたは.jsonファイルをここにドラッグ＆ドロップ
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-500">
+                      または下のボタンからファイルを選択
+                    </p>
                   </div>
-                </button>
-              </div>
-              <div className="flex items-start p-3 mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
-                <InfoIcon className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
-                <p>
-                  「バックアップから復元」は直接メモを取り込みます。「ミミノートを変換」はnanamemo形式の.jsonファイルを生成して保存します。
-                </p>
-              </div>
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleRestore}
+                      className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-blue-500"
+                    >
+                      <UploadIcon className="w-6 h-6 mr-3 flex-shrink-0" />
+                      <div>
+                        <span className="font-bold">バックアップから復元</span>
+                        <span className="block text-xs text-slate-500 dark:text-slate-400">
+                          nanamemo (.json) / ミミノート (.mimibk)
+                        </span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={handleConvert}
+                      disabled={isConverting}
+                      className="w-full flex items-center text-left p-4 text-base font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 text-yellow-600 dark:text-yellow-400 rounded-lg shadow-sm hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-yellow-300 dark:hover:border-yellow-600 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ConvertIcon className="w-6 h-6 mr-3 flex-shrink-0" />
+                      <div>
+                        <span className="font-bold">
+                          {isConverting
+                            ? "変換中..."
+                            : "ミミノートをnanamemo形式に変換"}
+                        </span>
+                        <span className="block text-xs text-slate-500 dark:text-slate-400">
+                          .mimibk, .db → .json ファイルを生成
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                  <div className="flex items-start p-3 mt-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+                    <InfoIcon className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
+                    <p>
+                      「バックアップから復元」は直接メモを取り込みます。「ミミノートを変換」はnanamemo形式の.jsonファイルを生成して保存します。
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </SettingsCard>
 
