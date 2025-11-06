@@ -826,29 +826,29 @@ export default function Settings({
               <span className="font-medium text-slate-700 dark:text-slate-300">
                 テーマ
               </span>
-              <div className="relative flex w-32 items-center rounded-full bg-rose-100 dark:bg-slate-700 p-1 transition-colors duration-300">
+              <div className="relative flex w-36 items-center rounded-full border-2 border-rose-300 dark:border-slate-500 bg-white dark:bg-slate-800 p-1.5 transition-all duration-300 shadow-sm">
                 <button
                   onClick={() => setIsDarkMode(false)}
-                  className={`relative z-10 flex-1 py-1 text-sm font-bold rounded-full transition-colors duration-300 focus:outline-none ${
+                  className={`relative z-10 flex-1 py-1.5 px-2 text-sm font-bold rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-rose-300 ${
                     !isDarkMode
-                      ? "text-white"
-                      : "text-rose-500 dark:text-rose-300"
+                      ? "text-white bg-rose-500 shadow-md"
+                      : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-700/50"
                   }`}
                 >
                   ライト
                 </button>
                 <button
                   onClick={() => setIsDarkMode(true)}
-                  className={`relative z-10 flex-1 py-1 text-sm font-bold rounded-full transition-colors duration-300 focus:outline-none ${
+                  className={`relative z-10 flex-1 py-1.5 px-2 text-sm font-bold rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-rose-300 ${
                     isDarkMode
-                      ? "text-white"
-                      : "text-rose-500 dark:text-rose-300"
+                      ? "text-white bg-rose-500 shadow-md"
+                      : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-700/50"
                   }`}
                 >
                   ダーク
                 </button>
                 <span
-                  className={`absolute inset-1 w-1/2 rounded-full bg-rose-500 shadow-md transform transition-transform duration-300 ${
+                  className={`absolute inset-1.5 w-1/2 rounded-full bg-rose-500 shadow-md transform transition-transform duration-300 ${
                     isDarkMode ? "translate-x-full" : "translate-x-0"
                   }`}
                   aria-hidden="true"
